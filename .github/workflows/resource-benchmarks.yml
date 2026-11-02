@@ -1,0 +1,36 @@
+name: Resource and throughput benchmarks
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Benchmark / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run sustained resource benchmark
+        env:
+          CC: cc
+          THREAD_LIBS: -pthread
+        run: |
+          mkdir -p build/stress
+          bash scripts/run-resource-stress.sh \
+            --seconds 120 --workers 4 --capacity 128 \
+            --max-rss-mib 768 --output build/stress/resource-benchmark.json
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-resource-benchmark-${{ matrix.os }}
+          path: build/stress/resource-benchmark.json
+          if-no-files-found: error
+          retention-days: 30

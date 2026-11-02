@@ -1,0 +1,40 @@
+name: Live Runtime integration
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-integration:
+    name: Backend + Lua 5.4 + production Runtime
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check out the pinned Runtime source
+        uses: actions/checkout@v7
+        with:
+          repository: cdin-editor/runtime
+          ref: 29289db83133155493766d51f64ecc02c67bb5a9
+          path: runtime
+          persist-credentials: false
+      - name: Install Lua 5.4 and native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential pkg-config liblua5.4-dev
+      - name: Install the pinned Kernel package
+        run: bash scripts/install-deps.sh
+      - name: Build Backend with Lua enabled
+        run: make clean && make WITH_LUA=1 all
+      - name: Run Backend / Kernel integration scenarios
+        run: make WITH_LUA=1 integration
+      - name: Run the real Runtime startup and shutdown smoke test
+        env:
+          CDIN_RUNTIME_ROOT: ${{ github.workspace }}/runtime/lua
+        run: bash scripts/run-runtime-integration.sh
+      - name: Check dependency boundaries
+        run: bash scripts/check-boundaries.sh

@@ -35,7 +35,7 @@ esac
 
 cp .gix/config.default .gix/config
 if [[ "$base_branch" != main ]]; then
-  awk -v branch="$base_branch" '
+  awk -v branch="$base_branch" '  
     /^  main:$/ { in_main = 1; print; next }
     in_main && /^    name: main$/ { print "    name: " branch; in_main = 0; found = 1; next }
     { print }

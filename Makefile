@@ -6,6 +6,7 @@ PKG_CONFIG ?= pkg-config
 
 BUILD_DIR ?= build
 KERNEL_PREFIX ?= $(CURDIR)/.deps/kernel
+export KERNEL_PREFIX
 KERNEL_MIN_VERSION ?= 1.2.1
 LUA_PKG ?= lua5.4
 WITH_LUA ?= auto
@@ -73,7 +74,7 @@ INTEGRATION_BIN := $(BUILD_DIR)/integration/backend_session
 INTEGRATION_KERNEL_BIN := $(BUILD_DIR)/integration/kernel_document_workflow
 EXAMPLE_BACKUP_BIN := $(BUILD_DIR)/examples/atomic-backup
 
-.PHONY: all services library require-kernel deps build e2e integration examples example-atomic-backup check test lint boundary info clean
+.PHONY: all services library require-kernel deps build e2e integration runtime-integration stress benchmark examples example-atomic-backup check test lint boundary info clean
 all: services library
 build: all
 services: $(SERVICE_LIB)
@@ -154,6 +155,17 @@ integration: $(INTEGRATION_BIN) $(INTEGRATION_KERNEL_BIN)
 	bash scripts/run-with-kernel-libs.sh "$(INTEGRATION_BIN)"
 	bash scripts/run-with-kernel-libs.sh "$(INTEGRATION_KERNEL_BIN)"
 
+# Additional release-readiness checks; not part of the default fast E2E gate.
+stress:
+	bash scripts/run-resource-stress.sh --seconds 15 --workers 4 --capacity 128 --max-rss-mib 512
+
+benchmark:
+	mkdir -p build/stress
+	bash scripts/run-resource-stress.sh --seconds 120 --workers 4 --capacity 128 --output build/stress/resource-benchmark.json
+
+runtime-integration:
+	bash scripts/run-runtime-integration.sh
+
 test: e2e integration
 
 lint:
@@ -162,12 +174,7 @@ lint:
 boundary:
 	bash scripts/check-boundaries.sh
 
-# `check` is an orchestration target, not a collection of prerequisites.
-# The Kernel package must be installed before Make evaluates pkg-config flags.
-# ci-check.sh deliberately uses a fresh Make process after installing it.
-check:
-	bash scripts/ci-check.sh
-	$(MAKE) lint
+check: e2e library integration lint boundary
 	@if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git diff --check; else echo "Git worktree not initialized; whitespace diff check skipped"; fi
 
 info:

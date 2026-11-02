@@ -172,8 +172,6 @@ handshakes or shutdown.
 | [Integration testing](docs/integration-testing.md) | Real-world E2E and Kernel integration scenarios. |
 | [Spec traceability](docs/spec-traceability.md) | Exact requirement and open-decision references in source and docs. |
 | [Development guide](docs/development.md) | Build, test, lint, Pipeline and gix workflow. |
-| [Troubleshooting](docs/troubleshooting.md) | Kernel linking, CI runner, Runtime and service errors. |
-| [CI failure analysis](docs/ci-failure-analysis-41406922640.md) | Root causes and corrections for the November 2, 2026 CI run. |
 | [Known limitations](docs/limitations.md) | Behavior that is incomplete or remains controlled by open Spec decisions. |
 | [Changelog](CHANGELOG.md) | Changes recorded for each version. |
 

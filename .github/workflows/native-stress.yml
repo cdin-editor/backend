@@ -1,0 +1,75 @@
+name: Native resource stress
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Bounded jobs / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up UCRT64 toolchain
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: make mingw-w64-ucrt-x86_64-gcc
+
+      - name: Run bounded-queue stress test
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          CC: cc
+          THREAD_LIBS: -pthread
+        run: bash scripts/run-resource-stress.sh --seconds 12 --workers 4 --capacity 96 --max-rss-mib 512
+
+      - name: Run bounded-queue stress test (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CC: gcc
+          THREAD_LIBS: -pthread
+          MEMORY_LIBS: -lpsapi
+        run: bash scripts/run-resource-stress.sh --seconds 12 --workers 4 --capacity 96 --max-rss-mib 512
+
+  sanitizers:
+    name: Address and undefined-behaviour sanitizers
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run stress test under ASan and UBSan
+        env:
+          CC: clang
+          EXTRA_CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
+          EXTRA_LDFLAGS: -fsanitize=address,undefined
+          THREAD_LIBS: -pthread
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: bash scripts/run-resource-stress.sh --seconds 20 --workers 4 --capacity 128 --max-rss-mib 768
+
+  thread-sanitizer:
+    name: Thread sanitizer
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run stress test under TSan
+        env:
+          CC: clang
+          EXTRA_CFLAGS: -fsanitize=thread -fno-omit-frame-pointer
+          EXTRA_LDFLAGS: -fsanitize=thread
+          THREAD_LIBS: -pthread
+          TSAN_OPTIONS: halt_on_error=1
+        run: bash scripts/run-resource-stress.sh --seconds 15 --workers 4 --capacity 64

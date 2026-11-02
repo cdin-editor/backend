@@ -24,20 +24,6 @@ static int is_separator(char value)
     return value == '/' || value == '\\';
 }
 
-#ifdef _WIN32
-static int wide_buffer_requirements(size_t required, DWORD *capacity, size_t *bytes)
-{
-    size_t count;
-    if (capacity == NULL || bytes == NULL || required == 0u ||
-        required >= SIZE_MAX / sizeof(wchar_t)) return -1;
-    count = required + 1u;
-    if (count > (size_t)MAXDWORD || count > SIZE_MAX / sizeof(wchar_t)) return -1;
-    *capacity = (DWORD)count;
-    *bytes = count * sizeof(wchar_t);
-    return 0;
-}
-#endif
-
 static size_t root_length(const char *path)
 {
 #ifdef _WIN32
@@ -148,14 +134,11 @@ int cdin_path_absolute(const char *path, char **out_path)
 #ifdef _WIN32
     {
         DWORD required = GetCurrentDirectoryW(0u, NULL);
-        DWORD buffer_capacity;
-        size_t allocation_bytes;
         wchar_t *wide_cwd;
-        if (required == 0u ||
-            wide_buffer_requirements((size_t)required, &buffer_capacity, &allocation_bytes) != 0) return -1;
-        wide_cwd = (wchar_t *)calloc(1u, allocation_bytes);
+        if (required == 0u || (size_t)required > SIZE_MAX / sizeof(wchar_t)) return -1;
+        wide_cwd = (wchar_t *)calloc((size_t)required + 1u, sizeof(wchar_t));
         if (wide_cwd == NULL) return -1;
-        if (GetCurrentDirectoryW(buffer_capacity, wide_cwd) == 0u) {
+        if (GetCurrentDirectoryW(required + 1u, wide_cwd) == 0u) {
             free(wide_cwd);
             return -1;
         }

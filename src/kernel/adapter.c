@@ -170,3 +170,4 @@ cdin_backend_status cdin_kernel_host_log(cdin_kernel_host *host, int level,
     if (status == CDIN_UNSUPPORTED) return CDIN_BACKEND_UNSUPPORTED;
     return cdin_kernel_map_status(status);
 }
+

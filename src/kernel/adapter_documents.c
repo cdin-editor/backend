@@ -303,3 +303,4 @@ cdin_backend_status cdin_kernel_host_document_is_clean(cdin_kernel_host *host, c
     if (result != CDIN_BACKEND_OK) return result;
     return cdin_kernel_map_status(cdin_doc_is_clean(host->kernel, slot->raw, out_clean));
 }
+

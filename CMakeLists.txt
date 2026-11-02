@@ -172,9 +172,7 @@ if(BUILD_TESTING)
         add_test(NAME backend_integration_kernel_document
                  COMMAND cdin_backend_integration_kernel_document)
 
-        # pkg-config may select the shared Kernel library when both shared and
-        # static artifacts are installed. Make its runtime location available
-        # to every integration executable without requiring global variables.
+        # Keep integration executables runnable without global loader changes.
         if(UNIX)
             set_target_properties(
                 cdin_backend_integration_session

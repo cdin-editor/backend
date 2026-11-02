@@ -43,3 +43,19 @@ description = "Create source archives for the tagged Backend release"
 command = ["bash", "scripts/package-release.sh"]
 depends_on = ["check"]
 timeout_seconds = 600
+
+[tasks.stress]
+description = "Exercise bounded queue pressure, completion accounting and resident memory limits"
+command = ["make", "stress"]
+timeout_seconds = 300
+
+[tasks.benchmark]
+description = "Collect sustained throughput and RSS measurements as JSON"
+command = ["make", "benchmark"]
+timeout_seconds = 600
+
+[tasks.runtime-integration]
+description = "Build with PUC Lua 5.4 and run the production Runtime lifecycle smoke test"
+command = ["make", "runtime-integration"]
+depends_on = ["deps"]
+timeout_seconds = 600

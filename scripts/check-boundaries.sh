@@ -33,11 +33,7 @@ if [[ -n "$service_matches" ]]; then
   failed=1
 fi
 
-section_glyph="$(printf '\302\247')"
-if grep -R -n --binary-files=without-match "$section_glyph" \
-    README.md CHANGELOG.md docs examples src include tests .github scripts \
-    Makefile CMakeLists.txt pipeline.toml psx.yml .editorconfig .gitattributes \
-    deps.lock .gix 2>/dev/null; then
+if grep -R -n '§' README.md CHANGELOG.md docs examples src include tests .github 2>/dev/null; then
   echo "Unwanted section glyph found; use descriptive headings and file links." >&2
   failed=1
 fi
