@@ -1,0 +1,22 @@
+CDIN Backend — Copyright (C) 2026 CDIN contributors.
+
+This repository implements the CDIN Backend component described by the CDIN
+Specification. The Specification defines cross-project contracts; this source
+repository records one implementation of those contracts. See LICENSE for the
+GNU General Public License version 3 or later.
+
+External binary dependency
+--------------------------
+
+The Backend links the separately distributed cdin-kernel package. That package
+contains the public Kernel C library and its private static logging dependency,
+m-mdy-m/log.c. Those files retain the copyright notices, licenses and NOTICE
+materials supplied by their respective upstream projects. The Backend does not
+copy, modify or claim ownership of those dependency sources. The downloaded
+Kernel package installs its third-party license materials under
+share/licenses/; deployments that redistribute the linked libraries must keep
+those notices with the distribution.
+
+Project names including CDIN, cdin-kernel, Lua and m-mdy-m/log.c identify their
+respective projects and do not imply ownership beyond the contributions in this
+repository.

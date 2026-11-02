@@ -1,0 +1,30 @@
+name: Question
+description: Ask a question about Backend setup, architecture, or documented behavior.
+title: "[QUESTION] "
+labels:
+  - question
+body:
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - Getting started
+        - Kernel dependency
+        - Build and tests
+        - Architecture
+        - Runtime Host API
+        - Frontend Protocol
+        - Git flow / contribution
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: What have you tried?

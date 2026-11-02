@@ -1,0 +1,21 @@
+name: Build and publish release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Check and publish Backend source package
+    uses: m-mdy-m/pipeline/.github/workflows/release.yml@main
+    with:
+      pipeline-ref: main
+      changelog-path: CHANGELOG.md
+      test-command: bash scripts/ci-check.sh
+      build-command: bash scripts/package-release.sh
+      artifact-path: |
+        dist/cdin-backend-*.tar.gz
+        dist/cdin-backend-*.tar.gz.sha256

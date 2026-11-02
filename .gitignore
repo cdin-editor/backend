@@ -1,0 +1,36 @@
+# Downloaded dependency packages and build outputs.
+/.deps/
+/build/
+/dist/
+/coverage/
+/.pipeline/
+/.psx/
+/.gix/config
+
+# C / CMake artifacts.
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.dylib
+*.so
+*.exe
+*.pdb
+*.ilk
+*.d
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+
+# Editor and operating-system files.
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini

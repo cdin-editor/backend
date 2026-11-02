@@ -1,0 +1,45 @@
+schema_version = 1
+
+[project]
+name = "cdin-backend"
+description = "Standalone C11 Backend library for CDIN; links the checksum-verified cdin-kernel package."
+
+[defaults]
+timeout_seconds = 900
+fail_fast = true
+
+[tasks.deps]
+description = "Download, verify and install the pinned cdin-kernel binary package"
+command = ["bash", "scripts/install-deps.sh"]
+timeout_seconds = 600
+
+[tasks.e2e]
+description = "Run real-world service workflows, bounded-job stress, file transactions and process supervision"
+command = ["make", "e2e"]
+timeout_seconds = 300
+
+[tasks.build]
+description = "Build the static Backend library against the installed Kernel package"
+command = ["make", "all"]
+depends_on = ["deps"]
+
+[tasks.integration]
+description = "Run Frontend session and real Kernel document workflows against the installed library"
+command = ["make", "integration"]
+depends_on = ["build"]
+
+[tasks.lint]
+description = "Lint Markdown and verify module dependency boundaries"
+command = ["make", "lint"]
+timeout_seconds = 300
+
+[tasks.check]
+description = "Run E2E services, install the pinned Kernel, execute Backend/Kernel integration workflows and enforce source boundaries"
+command = ["bash", "scripts/ci-check.sh"]
+timeout_seconds = 900
+
+[tasks.package]
+description = "Create source archives for the tagged Backend release"
+command = ["bash", "scripts/package-release.sh"]
+depends_on = ["check"]
+timeout_seconds = 600

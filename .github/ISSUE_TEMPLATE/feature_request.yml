@@ -1,0 +1,29 @@
+name: Backend improvement
+description: Propose a focused improvement to the Backend implementation or developer experience.
+title: "[FEATURE] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the use case or limitation, not only the proposed code.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Explain the behavior and the module boundary that should own it.
+    validations:
+      required: true
+  - type: input
+    id: spec
+    attributes:
+      label: Specification references
+      placeholder: "BE-009, ARCH-021, OD-22"
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and trade-offs

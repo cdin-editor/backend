@@ -1,0 +1,7 @@
+# Binary dependency pins for the standalone Backend build.
+# Package version and public ABI version are intentionally separate.
+CDIN_KERNEL_REPOSITORY="https://github.com/cdin-editor/kernel"
+CDIN_KERNEL_VERSION="1.2.1"
+CDIN_KERNEL_ABI_MAJOR="1"
+CDIN_KERNEL_ABI_MINOR="1"
+CDIN_KERNEL_ABI_PATCH="0"

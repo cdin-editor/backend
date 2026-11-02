@@ -1,0 +1,11 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: cdin-backend-services
+Description: Portable, Kernel-independent C11 services from CDIN Backend
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lcdin_backend_services
+Libs.private: @CMAKE_THREAD_LIBS_INIT@
+Cflags: -I${includedir}

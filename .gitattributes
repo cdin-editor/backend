@@ -1,0 +1,19 @@
+# Keep text files identical across Windows, macOS and Linux.
+* text=auto
+*.c text eol=lf
+*.h text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=lf
+
+# Do not rewrite binary release artifacts.
+*.a binary
+*.dll binary
+*.dylib binary
+*.so binary
+*.exe binary
+*.zip binary
+*.tar.gz binary

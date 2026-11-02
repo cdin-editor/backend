@@ -1,0 +1,69 @@
+name: Backend bug
+description: Report a crash, incorrect result, resource leak, or platform-specific failure.
+title: "[BUG] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Check the specification and existing issues first. Do not include secrets
+        or security-sensitive information in a public report.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Backend area
+      options:
+        - Kernel adapter
+        - Runtime Host / Lua bridge
+        - Session lifecycle
+        - Jobs and concurrency
+        - Filesystem / paths
+        - Process execution
+        - Frontend Protocol
+        - Build / packaging
+        - Documentation
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Backend version or commit
+      placeholder: "0.1.0 or commit SHA"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest configuration and input that reproduces the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or diagnostics
+      render: text
