@@ -162,11 +162,6 @@ if(BUILD_TESTING)
         target_compile_features(cdin_backend_integration_session PRIVATE c_std_11)
         target_compile_options(cdin_backend_integration_session PRIVATE
             $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wshadow;-Wconversion;-Wstrict-prototypes;-Wformat=2;-Wpedantic;-Werror>)
-        # pkg-config selects the shared library when both .so/.dylib and .a
-        # files are installed. Give the test executable a build-tree RPATH so
-        # the OS loader can resolve the pinned Kernel without global settings.
-        set_target_properties(cdin_backend_integration_session PROPERTIES
-            BUILD_RPATH "${CDIN_KERNEL_LIBDIR}")
         add_test(NAME backend_integration_session COMMAND cdin_backend_integration_session)
 
         add_executable(cdin_backend_integration_kernel_document tests/integration/kernel_document_workflow.c)
@@ -176,5 +171,28 @@ if(BUILD_TESTING)
         cdin_enable_strict_test_warnings(cdin_backend_integration_kernel_document)
         add_test(NAME backend_integration_kernel_document
                  COMMAND cdin_backend_integration_kernel_document)
+
+        # pkg-config may select the shared Kernel library when both shared and
+        # static artifacts are installed. Make its runtime location available
+        # to every integration executable without requiring global variables.
+        if(UNIX)
+            set_target_properties(
+                cdin_backend_integration_session
+                cdin_backend_integration_kernel_document
+                PROPERTIES BUILD_RPATH "${CDIN_KERNEL_LIBDIR}")
+        elseif(WIN32)
+            file(GLOB CDIN_KERNEL_RUNTIME_DLLS "${CDIN_KERNEL_BINDIR}/*.dll")
+            if(CDIN_KERNEL_RUNTIME_DLLS)
+                foreach(integration_target IN ITEMS
+                    cdin_backend_integration_session
+                    cdin_backend_integration_kernel_document)
+                    add_custom_command(TARGET ${integration_target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            ${CDIN_KERNEL_RUNTIME_DLLS}
+                            "$<TARGET_FILE_DIR:${integration_target}>"
+                        COMMAND_EXPAND_LISTS)
+                endforeach()
+            endif()
+        endif()
     endif()
 endif()

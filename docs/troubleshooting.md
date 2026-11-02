@@ -45,6 +45,29 @@ The repository permits prose lines up to 500 characters. Split long technical
 paragraphs into shorter sentences or bullets rather than raising the limit.
 Long table rows are intentionally allowed by the Markdownlint configuration.
 
+### CMake cannot find `cdin-kernel` after the package installer succeeds
+
+The dependency installer verifies the package in its own process, but its
+`PKG_CONFIG_PATH` setting does not automatically persist into a later workflow
+step. Export the installed package's `lib/pkgconfig` directory before running
+`cmake`. The CI workflow does this explicitly for the Linux, macOS, and Windows
+CMake steps.
+
+### The boundary checker reports its own `printf` line on macOS
+
+The system Bash on macOS may not interpret the `\uNNNN` escape used to build
+the section-sign search pattern. Use the UTF-8 octal byte sequence
+`\302\247` with `printf`, which is portable across the Bash versions used by
+the runners and still searches for the actual character.
+
+### Windows GCC reports `-Werror=type-limits` in `cdin_path_absolute`
+
+`GetCurrentDirectoryW` returns a 32-bit `DWORD`; comparing it directly with a
+64-bit `SIZE_MAX` bound is provably false on UCRT64. Convert the value to
+`size_t` and perform multiplication/overflow checks in a helper that accepts
+`size_t`. Also reject capacities that cannot be represented by the Win32
+`DWORD` buffer-length parameter before calling the API.
+
 ## Kernel and ABI errors
 
 ### `VERSION_MISMATCH`

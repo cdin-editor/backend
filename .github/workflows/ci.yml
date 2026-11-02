@@ -60,6 +60,11 @@ jobs:
 
       - name: CMake build and CTest
         run: |
+          if command -v cygpath >/dev/null 2>&1; then
+            export PKG_CONFIG_PATH="$(cygpath -m "$PWD/.deps/kernel/lib/pkgconfig")"
+          else
+            export PKG_CONFIG_PATH="$PWD/.deps/kernel/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          fi
           cmake -S . -B build-cmake -DCMAKE_BUILD_TYPE=Release
           cmake --build build-cmake --config Release --parallel
           ctest --test-dir build-cmake -C Release --output-on-failure
@@ -102,6 +107,11 @@ jobs:
       - name: CMake build and CTest
         shell: msys2 {0}
         run: |
+          if command -v cygpath >/dev/null 2>&1; then
+            export PKG_CONFIG_PATH="$(cygpath -m "$PWD/.deps/kernel/lib/pkgconfig")"
+          else
+            export PKG_CONFIG_PATH="$PWD/.deps/kernel/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          fi
           cmake -S . -B build-cmake -DCMAKE_BUILD_TYPE=Release
           cmake --build build-cmake --config Release --parallel
           ctest --test-dir build-cmake -C Release --output-on-failure

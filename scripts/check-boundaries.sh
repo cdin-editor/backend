@@ -33,7 +33,7 @@ if [[ -n "$service_matches" ]]; then
   failed=1
 fi
 
-section_glyph="$(printf '\u00a7')"
+section_glyph="$(printf '\302\247')"
 if grep -R -n --binary-files=without-match "$section_glyph" \
     README.md CHANGELOG.md docs examples src include tests .github scripts \
     Makefile CMakeLists.txt pipeline.toml psx.yml .editorconfig .gitattributes \
