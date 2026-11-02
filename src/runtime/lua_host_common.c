@@ -29,9 +29,9 @@ static const char *status_code(cdin_backend_status status)
     }
 }
 
-/* Push a structured error object and raise it. Runtime catches this table and
- * preserves the machine-readable code while adding operation context. */
-static void lua_error_details_from_host(cdin_lua_error_details *target,
+/* Translate Kernel-adapter error details into the Lua bridge's structured
+ * detail model. Shared with lua_host_documents.c. */
+void lua_error_details_from_host(cdin_lua_error_details *target,
                                         const cdin_host_error_details *source,
                                         cdin_backend_status status)
 {

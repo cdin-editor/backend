@@ -132,7 +132,8 @@ static int lua_doc_history(lua_State *L, int redo)
     cdin_backend_status status;
     luaL_checktype(L, 3, LUA_TTABLE);
     expected = field_u64(L, 3, "expected_version", UINT64_MAX);
-    blob_capacity = (size_t)field_u64(L, 3, "blob_capacity", CDIN_DEFAULT_MAX_BLOB_SIZE);
+    blob_capacity = (size_t)field_u64(L, 3, "blob_capacity",
+        (uint64_t)cdin_kernel_host_default_blob_capacity());
     status = cdin_kernel_host_document_history(host->backend->kernel, handle->value,
         expected, blob_capacity, redo, &result);
     if (status != CDIN_BACKEND_OK) {
@@ -163,7 +164,8 @@ int lua_doc_replace_batch(lua_State *L)
     lua_getfield(L, 3, "edits");
     luaL_checktype(L, -1, LUA_TTABLE);
     count = lua_rawlen(L, -1);
-    if (count == 0u || count > CDIN_MAX_BATCH_EDITS_HARD || count > SIZE_MAX / sizeof(*edits)) {
+    if (count == 0u || count > cdin_kernel_host_max_batch_edits() ||
+        count > SIZE_MAX / sizeof(*edits)) {
         lua_pop(L, 1);
         return raise_status(L, CDIN_BACKEND_LIMIT_EXCEEDED, "documents.replace_batch", NULL);
     }
@@ -501,14 +503,14 @@ int lua_doc_search(lua_State *L)
     luaL_checktype(L, 3, LUA_TTABLE);
     lua_getfield(L, 3, "pattern"); pattern = luaL_checklstring(L, -1, &pattern_length);
     lua_getfield(L, 3, "mode"); mode = luaL_optstring(L, -1, "literal");
-    if (strcmp(mode, "literal") == 0) search_mode = CDIN_SEARCH_LITERAL;
-    else if (strcmp(mode, "bytes") == 0) search_mode = CDIN_SEARCH_BYTES;
+    if (strcmp(mode, "literal") == 0) search_mode = CDIN_HOST_SEARCH_LITERAL;
+    else if (strcmp(mode, "bytes") == 0) search_mode = CDIN_HOST_SEARCH_BYTES;
     else if (strcmp(mode, "regex") == 0) { lua_pop(L, 2); return raise_status(L, CDIN_BACKEND_UNSUPPORTED, "documents.search", NULL); }
     else { lua_pop(L, 2); return raise_argument(L, "documents.search mode"); }
     lua_pop(L, 1);
     lua_getfield(L, 3, "direction"); direction = luaL_optstring(L, -1, "forward");
-    if (strcmp(direction, "forward") == 0) search_direction = CDIN_SEARCH_FORWARD;
-    else if (strcmp(direction, "backward") == 0) search_direction = CDIN_SEARCH_BACKWARD;
+    if (strcmp(direction, "forward") == 0) search_direction = CDIN_HOST_SEARCH_FORWARD;
+    else if (strcmp(direction, "backward") == 0) search_direction = CDIN_HOST_SEARCH_BACKWARD;
     else { lua_pop(L, 2); return raise_argument(L, "documents.search direction"); }
     lua_pop(L, 1);
     from = field_u64(L, 3, "from", 0u);
@@ -517,8 +519,8 @@ int lua_doc_search(lua_State *L)
     steps = field_u64(L, 3, "step_limit", 0u);
     lua_getfield(L, 3, "expected_version"); has_expected = !lua_isnil(L, -1);
     expected = has_expected ? check_u64(L, -1, "expected_version") : 0u; lua_pop(L, 1);
-    if (field_boolean(L, 3, "case_insensitive")) flags |= CDIN_SEARCH_CASE_INSENSITIVE;
-    if (field_boolean(L, 3, "any_newline")) flags |= CDIN_SEARCH_ANY_NEWLINE;
+    if (field_boolean(L, 3, "case_insensitive")) flags |= CDIN_HOST_SEARCH_CASE_INSENSITIVE;
+    if (field_boolean(L, 3, "any_newline")) flags |= CDIN_HOST_SEARCH_ANY_NEWLINE;
     if (limit == 0u || limit > 100000u || limit > (uint64_t)INT_MAX || limit > SIZE_MAX / 2u) { lua_pop(L, 1); return raise_argument(L, "documents.search limit"); }
     status = cdin_kernel_host_search(host->backend->kernel, document->value,
         (const uint8_t *)pattern, pattern_length, search_mode, search_direction,

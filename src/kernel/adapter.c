@@ -61,6 +61,16 @@ int cdin_kernel_host_has_feature(const cdin_kernel_host *host, cdin_host_feature
     return (host->features & bit) != 0u;
 }
 
+size_t cdin_kernel_host_default_blob_capacity(void)
+{
+    return (size_t)CDIN_DEFAULT_MAX_BLOB_SIZE;
+}
+
+size_t cdin_kernel_host_max_batch_edits(void)
+{
+    return (size_t)CDIN_MAX_BATCH_EDITS_HARD;
+}
+
 cdin_backend_status cdin_kernel_host_create(uint64_t max_documents, uint64_t max_document_bytes,
                                              uint64_t max_undo_bytes, int log_level, int log_output,
                                              uint64_t max_log_message_bytes,

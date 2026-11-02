@@ -85,6 +85,9 @@ typedef struct cdin_lua_error_details {
 } cdin_lua_error_details;
 
 /* Shared validation, error translation and Lua value construction. */
+void lua_error_details_from_host(cdin_lua_error_details *target,
+                                 const cdin_host_error_details *source,
+                                 cdin_backend_status status);
 int raise_status(lua_State *L, cdin_backend_status status, const char *operation,
                  const cdin_lua_error_details *details);
 int raise_argument(lua_State *L, const char *operation);

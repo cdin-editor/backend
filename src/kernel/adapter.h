@@ -19,6 +19,22 @@ typedef enum cdin_host_feature {
     CDIN_HOST_FEATURE_SEARCH_REGEX
 } cdin_host_feature;
 
+/* Runtime-facing search values. Keep Kernel ABI enums and flags private to
+ * the adapter implementation; adapter_search.c translates these values. */
+typedef enum cdin_host_search_mode {
+    CDIN_HOST_SEARCH_LITERAL = 0,
+    CDIN_HOST_SEARCH_REGEX = 1,
+    CDIN_HOST_SEARCH_BYTES = 2
+} cdin_host_search_mode;
+
+typedef enum cdin_host_search_direction {
+    CDIN_HOST_SEARCH_FORWARD = 0,
+    CDIN_HOST_SEARCH_BACKWARD = 1
+} cdin_host_search_direction;
+
+#define CDIN_HOST_SEARCH_CASE_INSENSITIVE 1u
+#define CDIN_HOST_SEARCH_ANY_NEWLINE      2u
+
 typedef struct cdin_host_handle { uint32_t slot; uint32_t generation; } cdin_host_handle;
 typedef struct cdin_host_doc_info { uint64_t version; uint64_t length; uint64_t accepted_sequence; } cdin_host_doc_info;
 typedef struct cdin_host_error_details {
@@ -92,6 +108,8 @@ cdin_backend_status cdin_kernel_host_document_history(cdin_kernel_host *host, cd
                                                        uint64_t expected_version, size_t blob_capacity,
                                                        int redo, cdin_host_edit_result *out_result);
 void cdin_kernel_host_edit_result_free(cdin_host_edit_result *result);
+size_t cdin_kernel_host_default_blob_capacity(void);
+size_t cdin_kernel_host_max_batch_edits(void);
 cdin_backend_status cdin_kernel_host_document_mark_clean(cdin_kernel_host *host, cdin_host_handle handle);
 cdin_backend_status cdin_kernel_host_document_mark_clean_if_version(cdin_kernel_host *host,
                                                                      cdin_host_handle handle,
