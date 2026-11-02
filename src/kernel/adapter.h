@@ -6,6 +6,19 @@
 
 typedef struct cdin_kernel_host cdin_kernel_host;
 
+/* Backend-level names for Kernel capabilities. The numeric values are
+ * intentionally independent of the Kernel ABI feature-bit assignments.
+ * Only the adapter implementation translates these names to CDIN_FEAT_*. */
+typedef enum cdin_host_feature {
+    CDIN_HOST_FEATURE_BATCH = 0,
+    CDIN_HOST_FEATURE_TRANSACTIONS,
+    CDIN_HOST_FEATURE_SNAPSHOTS,
+    CDIN_HOST_FEATURE_NOTIFICATIONS,
+    CDIN_HOST_FEATURE_SEARCH_LITERAL,
+    CDIN_HOST_FEATURE_SEARCH_BYTES,
+    CDIN_HOST_FEATURE_SEARCH_REGEX
+} cdin_host_feature;
+
 typedef struct cdin_host_handle { uint32_t slot; uint32_t generation; } cdin_host_handle;
 typedef struct cdin_host_doc_info { uint64_t version; uint64_t length; uint64_t accepted_sequence; } cdin_host_doc_info;
 typedef struct cdin_host_error_details {
@@ -126,7 +139,7 @@ cdin_backend_status cdin_kernel_host_search(cdin_kernel_host *host, cdin_host_ha
                                              uint32_t search_flags, uint64_t step_limit,
                                              cdin_host_search_result *out_result);
 void cdin_kernel_host_search_result_free(cdin_host_search_result *result);
-void cdin_kernel_host_features(cdin_kernel_host *host, uint64_t *out_mask);
+int cdin_kernel_host_has_feature(const cdin_kernel_host *host, cdin_host_feature feature);
 void cdin_kernel_host_abi_version(cdin_kernel_host *host, uint32_t *major, uint32_t *minor, uint32_t *patch);
 
 #endif

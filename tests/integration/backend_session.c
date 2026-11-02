@@ -1,5 +1,6 @@
 #include "cdin/backend.h"
 #include "cdin/backend_protocol.h"
+#include "backend_internal.h"
 #include "platform/thread.h"
 
 #include <stdio.h>
@@ -116,6 +117,18 @@ static int test_running_session_and_protocol(log_capture *logs)
         (void)fprintf(stderr, "create failed: %s\n", cdin_backend_status_name(status));
         return 1;
     }
+
+    /* The Runtime Host exposes semantic feature names, while Kernel ABI bits
+     * remain private to src/kernel/. Verify the adapter translates all
+     * capabilities required by the pinned Kernel package correctly. */
+    if (!cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_BATCH) ||
+        !cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_TRANSACTIONS) ||
+        !cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_SNAPSHOTS) ||
+        !cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_NOTIFICATIONS) ||
+        !cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_SEARCH_LITERAL) ||
+        !cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_SEARCH_BYTES) ||
+        cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_SEARCH_REGEX)) goto fail;
+
     if (cdin_backend_get_state(backend) != CDIN_BACKEND_STATE_CREATED) goto fail;
     if (cdin_backend_pump(backend, 1u, &processed) != CDIN_BACKEND_INVALID_STATE) goto fail;
     if (cdin_backend_start(backend) != CDIN_BACKEND_OK) goto fail;

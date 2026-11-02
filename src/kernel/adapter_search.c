@@ -67,11 +67,6 @@ void cdin_kernel_host_search_result_free(cdin_host_search_result *result)
     memset(result, 0, sizeof(*result));
 }
 
-void cdin_kernel_host_features(cdin_kernel_host *host, uint64_t *out_mask)
-{
-    if (out_mask != NULL) *out_mask = host == NULL ? 0u : host->features;
-}
-
 void cdin_kernel_host_abi_version(cdin_kernel_host *host, uint32_t *major, uint32_t *minor, uint32_t *patch)
 {
     if (major != NULL) *major = host == NULL ? 0u : host->abi_major;

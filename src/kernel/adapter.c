@@ -39,6 +39,28 @@ static void kernel_log_sink(void *context, int level, const char *message, size_
     }
 }
 
+/* BE-003: Backend is the only direct client of the Kernel ABI. Runtime asks
+ * for semantic capabilities through this adapter and never includes
+ * cdin/kernel.h directly.
+ * Spec: https://github.com/cdin-editor/spec/blob/c4de9bf3d506b4e1f07b8986531cd056341708b0/docs/components/backend.md#L64 */
+int cdin_kernel_host_has_feature(const cdin_kernel_host *host, cdin_host_feature feature)
+{
+    uint64_t bit;
+
+    if (host == NULL) return 0;
+    switch (feature) {
+        case CDIN_HOST_FEATURE_BATCH: bit = CDIN_FEAT_BATCH; break;
+        case CDIN_HOST_FEATURE_TRANSACTIONS: bit = CDIN_FEAT_TRANSACTIONS; break;
+        case CDIN_HOST_FEATURE_SNAPSHOTS: bit = CDIN_FEAT_SNAPSHOTS; break;
+        case CDIN_HOST_FEATURE_NOTIFICATIONS: bit = CDIN_FEAT_NOTIFICATIONS; break;
+        case CDIN_HOST_FEATURE_SEARCH_LITERAL: bit = CDIN_FEAT_SEARCH_LITERAL; break;
+        case CDIN_HOST_FEATURE_SEARCH_BYTES: bit = CDIN_FEAT_SEARCH_BYTES; break;
+        case CDIN_HOST_FEATURE_SEARCH_REGEX: bit = CDIN_FEAT_SEARCH_REGEX; break;
+        default: return 0;
+    }
+    return (host->features & bit) != 0u;
+}
+
 cdin_backend_status cdin_kernel_host_create(uint64_t max_documents, uint64_t max_document_bytes,
                                              uint64_t max_undo_bytes, int log_level, int log_output,
                                              uint64_t max_log_message_bytes,
