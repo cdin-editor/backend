@@ -79,6 +79,7 @@ void cdin_lua_register_host(cdin_lua_host *host)
     set_closure(L, host, "create", lua_doc_create);
     set_closure(L, host, "close", lua_doc_close);
     set_closure(L, host, "read", lua_doc_read);
+    set_closure(L, host, "read_lines", lua_doc_read_lines);
     set_closure(L, host, "replace", lua_doc_replace);
     set_closure(L, host, "replace_batch", lua_doc_replace_batch);
     set_closure(L, host, "undo", lua_doc_undo);

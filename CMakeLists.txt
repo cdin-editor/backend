@@ -1,15 +1,20 @@
 cmake_minimum_required(VERSION 3.22)
-project(cdin_backend VERSION 0.1.0 LANGUAGES C)
+project(cdin_backend VERSION 0.2.0 LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CTest)
 find_package(Threads REQUIRED)
-find_package(PkgConfig REQUIRED)
 
 set(CDIN_KERNEL_MIN_VERSION "1.2.1" CACHE STRING "Minimum supported cdin-kernel package version")
+option(CDIN_BUILD_BACKEND "Build the application Backend (requires cdin-kernel)" ON)
 option(CDIN_WITH_LUA "Compile the PUC Lua 5.4 Runtime bridge" OFF)
 option(CDIN_BUILD_INTEGRATION_TESTS "Build tests that link the installed Kernel library" ON)
 option(CDIN_BUILD_EXAMPLES "Build complete standalone service examples" ON)
+option(CDIN_BUILD_FUZZERS "Build libFuzzer protocol targets (Clang only)" OFF)
+
+if(CDIN_WITH_LUA AND NOT CDIN_BUILD_BACKEND)
+    message(FATAL_ERROR "CDIN_WITH_LUA requires CDIN_BUILD_BACKEND=ON")
+endif()
 
 # OS and concurrency services have no Kernel dependency. Keeping them in a
 # separate library lets other C projects reuse them without starting CDIN.
@@ -23,6 +28,18 @@ add_library(cdin_backend_services STATIC
     src/platform/native_path.c
     src/platform/thread.c)
 add_library(cdin::backend_services ALIAS cdin_backend_services)
+
+# The wire codec is deliberately independent from Kernel, Lua and OS services.
+# A Frontend can link this target alone to validate and frame protocol messages.
+add_library(cdin_protocol STATIC src/protocol/codec.c)
+add_library(cdin::protocol ALIAS cdin_protocol)
+target_compile_features(cdin_protocol PUBLIC c_std_11)
+target_include_directories(cdin_protocol
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_compile_options(cdin_protocol PRIVATE
+    $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wshadow;-Wconversion;-Wstrict-prototypes;-Wformat=2;-Wpedantic;-Werror>)
 target_compile_features(cdin_backend_services PUBLIC c_std_11)
 target_include_directories(cdin_backend_services
     PUBLIC
@@ -38,6 +55,8 @@ elseif(APPLE)
     target_compile_definitions(cdin_backend_services PRIVATE _DARWIN_C_SOURCE _POSIX_C_SOURCE=200809L)
 endif()
 
+if(CDIN_BUILD_BACKEND)
+find_package(PkgConfig REQUIRED)
 # The application-specific Backend library depends on reusable services and
 # the installed Kernel package. Kernel ABI details stay inside src/kernel/;
 # that directory is the private adapter boundary shared by small operation
@@ -67,6 +86,7 @@ add_library(cdin_backend STATIC
     src/runtime/lua_host_documents.c
     src/runtime/lua_host_services.c
     src/runtime/lua_host_register.c
+    src/runtime/lua_host_protocol.c
     src/session/session.c)
 add_library(cdin::backend ALIAS cdin_backend)
 target_compile_features(cdin_backend PUBLIC c_std_11)
@@ -75,7 +95,7 @@ target_include_directories(cdin_backend
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(cdin_backend PUBLIC cdin_backend_services PRIVATE PkgConfig::CDIN_KERNEL)
+target_link_libraries(cdin_backend PUBLIC cdin_backend_services PRIVATE PkgConfig::CDIN_KERNEL cdin::protocol)
 target_compile_options(cdin_backend PRIVATE
     $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wshadow;-Wconversion;-Wstrict-prototypes;-Wformat=2;-Wpedantic;-Werror>)
 if(UNIX AND NOT APPLE)
@@ -94,10 +114,18 @@ if(CDIN_WITH_LUA)
     target_link_libraries(cdin_backend PRIVATE ${LUA_LIBRARIES})
 endif()
 
-install(TARGETS cdin_backend cdin_backend_services
+endif()
+
+install(TARGETS cdin_backend_services cdin_protocol
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+if(CDIN_BUILD_BACKEND)
+    install(TARGETS cdin_backend
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+endif()
 install(DIRECTORY include/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}" FILES_MATCHING PATTERN "*.h")
 configure_file(packaging/cdin-backend-services.pc.in
                "${CMAKE_CURRENT_BINARY_DIR}/cdin-backend-services.pc" @ONLY)
@@ -112,6 +140,10 @@ if(CDIN_BUILD_EXAMPLES)
         $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wshadow;-Wconversion;-Wstrict-prototypes;-Wformat=2;-Wpedantic;-Werror>)
 endif()
 
+if(CDIN_BUILD_INTEGRATION_TESTS AND NOT CDIN_BUILD_BACKEND)
+    message(STATUS "Kernel integration tests are disabled because CDIN_BUILD_BACKEND=OFF")
+endif()
+
 if(BUILD_TESTING)
     add_executable(cdin_backend_test_child tests/e2e/support/test_child_process.c)
     target_compile_features(cdin_backend_test_child PRIVATE c_std_11)
@@ -120,9 +152,51 @@ if(BUILD_TESTING)
 
     function(cdin_enable_strict_test_warnings target)
         target_compile_features(${target} PRIVATE c_std_11)
+        # Release configurations normally define NDEBUG. These test programs
+        # use assert() as executable checks, so keep assertions enabled in every
+        # configuration instead of silently compiling the test body away.
         target_compile_options(${target} PRIVATE
-            $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wshadow;-Wconversion;-Wstrict-prototypes;-Wformat=2;-Wpedantic;-Werror>)
+            $<$<C_COMPILER_ID:GNU,Clang>:-UNDEBUG;-Wall;-Wextra;-Wshadow;-Wconversion;-Wstrict-prototypes;-Wformat=2;-Wpedantic;-Werror>
+            $<$<C_COMPILER_ID:MSVC>:/UNDEBUG>)
     endfunction()
+
+    # Codec tests run without an installed Kernel package or Lua development headers.
+    add_executable(cdin_protocol_codec_tests tests/protocol/test_codec.c)
+    target_link_libraries(cdin_protocol_codec_tests PRIVATE cdin::protocol)
+    cdin_enable_strict_test_warnings(cdin_protocol_codec_tests)
+    add_test(NAME protocol_codec COMMAND cdin_protocol_codec_tests)
+
+    # FE-007 / TEST-020: a display-free client records and replays both protocol directions.
+    add_executable(cdin_protocol_headless_tests tests/headless/headless_frontend.c)
+    target_link_libraries(cdin_protocol_headless_tests PRIVATE cdin::protocol)
+    cdin_enable_strict_test_warnings(cdin_protocol_headless_tests)
+    add_test(NAME protocol_headless COMMAND cdin_protocol_headless_tests)
+
+    add_executable(cdin_protocol_server_tests
+        tests/protocol/test_server.c src/protocol/server.c src/core/status.c)
+    target_include_directories(cdin_protocol_server_tests PRIVATE src)
+    target_link_libraries(cdin_protocol_server_tests PRIVATE cdin::protocol)
+    cdin_enable_strict_test_warnings(cdin_protocol_server_tests)
+    add_test(NAME protocol_server COMMAND cdin_protocol_server_tests)
+
+    if(CDIN_BUILD_FUZZERS)
+        if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+            message(FATAL_ERROR "CDIN_BUILD_FUZZERS requires Clang/libFuzzer")
+        endif()
+        # Compile the decoder into the fuzz target itself so libFuzzer's
+        # coverage instrumentation observes parser branches, not only the thin
+        # LLVMFuzzerTestOneInput wrapper. The production codec target remains
+        # free of sanitizer/runtime dependencies.
+        add_executable(cdin_protocol_decode_fuzz
+            tests/fuzz/protocol_decode_fuzz.c
+            src/protocol/codec.c)
+        target_include_directories(cdin_protocol_decode_fuzz PRIVATE include)
+        target_compile_options(cdin_protocol_decode_fuzz PRIVATE
+            -fsanitize=fuzzer-no-link,address,undefined
+            -fno-omit-frame-pointer
+            -Wall -Wextra -Wshadow -Wconversion -Wstrict-prototypes -Wformat=2 -Wpedantic -Werror)
+        target_link_options(cdin_protocol_decode_fuzz PRIVATE -fsanitize=fuzzer,address,undefined)
+    endif()
 
     add_executable(cdin_backend_e2e_job_pipeline
         tests/e2e/scenarios/job_pipeline.c tests/e2e/support/scenario.c)
@@ -155,7 +229,7 @@ if(BUILD_TESTING)
              COMMAND cdin_backend_e2e_process_supervision "$<TARGET_FILE:cdin_backend_test_child>")
     add_dependencies(cdin_backend_e2e_process_supervision cdin_backend_test_child)
 
-    if(CDIN_BUILD_INTEGRATION_TESTS)
+    if(CDIN_BUILD_INTEGRATION_TESTS AND CDIN_BUILD_BACKEND)
         add_executable(cdin_backend_integration_session tests/integration/backend_session.c)
         target_include_directories(cdin_backend_integration_session PRIVATE src)
         target_link_libraries(cdin_backend_integration_session PRIVATE cdin::backend)

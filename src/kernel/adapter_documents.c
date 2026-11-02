@@ -145,6 +145,133 @@ void cdin_kernel_host_read_result_free(cdin_host_read_result *result)
     memset(result, 0, sizeof(*result));
 }
 
+void cdin_kernel_host_lines_result_free(cdin_host_lines_result *result)
+{
+    size_t index;
+    if (result == NULL) return;
+    for (index = 0u; index < result->count; index++) free(result->lines[index].bytes);
+    free(result->lines);
+    memset(result, 0, sizeof(*result));
+}
+
+/* Read a version-pinned line window. A temporary Kernel snapshot prevents a
+ * concurrent writer from mixing offsets from one version with bytes from the
+ * next; the lease is always released before returning to the Runtime. */
+cdin_backend_status cdin_kernel_host_document_read_lines(cdin_kernel_host *host,
+                                                          cdin_host_handle handle,
+                                                          uint64_t first_line,
+                                                          size_t line_count,
+                                                          uint64_t expected_version,
+                                                          size_t max_bytes,
+                                                          cdin_host_lines_result *out_result)
+{
+    cdin_doc_slot *slot;
+    cdin_snapshot snapshot = CDIN_INVALID_SNAPSHOT;
+    cdin_source source;
+    cdin_version version = 0u;
+    uint64_t total_lines = 0u;
+    uint64_t total_bytes = 0u;
+    size_t wanted_count;
+    size_t index;
+    cdin_status kernel_status;
+    cdin_backend_status status;
+    int acquired = 0;
+
+    if (host == NULL || out_result == NULL || line_count == 0u || line_count > 4096u || max_bytes == 0u)
+        return CDIN_BACKEND_INVALID_ARGUMENT;
+    memset(out_result, 0, sizeof(*out_result));
+    status = cdin_kernel_document_get(host, handle, &slot);
+    if (status != CDIN_BACKEND_OK) return status;
+
+    kernel_status = cdin_snapshot_acquire(host->kernel, slot->raw, &version, &snapshot);
+    if (kernel_status != CDIN_OK) return cdin_kernel_map_status(kernel_status);
+    acquired = 1;
+    source = cdin_src_snap(snapshot);
+    out_result->version = (uint64_t)version;
+    if (expected_version != UINT64_MAX && (uint64_t)version != expected_version) {
+        out_result->details.expected = expected_version;
+        out_result->details.current = (uint64_t)version;
+        status = CDIN_BACKEND_STALE_VERSION;
+        goto cleanup;
+    }
+
+    kernel_status = cdin_text_line_count(host->kernel, source, &total_lines);
+    if (kernel_status != CDIN_OK) { status = cdin_kernel_map_status(kernel_status); goto cleanup; }
+    out_result->total_lines = total_lines;
+    if (first_line >= total_lines) {
+        out_result->details.requested = first_line;
+        out_result->details.length = total_lines;
+        status = CDIN_BACKEND_OUT_OF_RANGE;
+        goto cleanup;
+    }
+    wanted_count = (size_t)((uint64_t)line_count > total_lines - first_line
+        ? total_lines - first_line : (uint64_t)line_count);
+    if (wanted_count > SIZE_MAX / sizeof(*out_result->lines)) {
+        status = CDIN_BACKEND_LIMIT_EXCEEDED;
+        goto cleanup;
+    }
+    out_result->lines = (cdin_host_line *)calloc(wanted_count, sizeof(*out_result->lines));
+    if (out_result->lines == NULL) { status = CDIN_BACKEND_NO_MEMORY; goto cleanup; }
+
+    for (index = 0u; index < wanted_count; index++) {
+        uint64_t line = first_line + (uint64_t)index;
+        uint64_t start = 0u;
+        uint64_t end = 0u;
+        size_t bytes_length;
+        uint32_t flags = 0u;
+        kernel_status = cdin_text_line_start(host->kernel, source, line, &start);
+        if (kernel_status != CDIN_OK) { status = cdin_kernel_map_status(kernel_status); goto cleanup; }
+        if (line + 1u < total_lines) {
+            kernel_status = cdin_text_line_start(host->kernel, source, line + 1u, &end);
+            if (kernel_status != CDIN_OK) { status = cdin_kernel_map_status(kernel_status); goto cleanup; }
+        } else {
+            kernel_status = cdin_text_len(host->kernel, source, &end);
+            if (kernel_status != CDIN_OK) { status = cdin_kernel_map_status(kernel_status); goto cleanup; }
+        }
+        if (end < start || end - start > SIZE_MAX) { status = CDIN_BACKEND_INTERNAL; goto cleanup; }
+        bytes_length = (size_t)(end - start);
+        if (bytes_length > max_bytes - (size_t)total_bytes) {
+            if (index == 0u) {
+                out_result->details.required = (uint64_t)bytes_length;
+                status = CDIN_BACKEND_LIMIT_EXCEEDED;
+                goto cleanup;
+            }
+            break; /* Return a complete prefix; caller can request the remainder. */
+        }
+        if (bytes_length != 0u) {
+            out_result->lines[index].bytes = (uint8_t *)malloc(bytes_length);
+            if (out_result->lines[index].bytes == NULL) { status = CDIN_BACKEND_NO_MEMORY; goto cleanup; }
+            out_result->count = index + 1u;
+            kernel_status = cdin_text_read(host->kernel, source, start, end,
+                out_result->lines[index].bytes, bytes_length, &bytes_length, &flags);
+            if (kernel_status != CDIN_OK) { status = cdin_kernel_map_status(kernel_status); goto cleanup; }
+        }
+        out_result->lines[index].length = bytes_length;
+        total_bytes += (uint64_t)bytes_length;
+        if (bytes_length == 0u) out_result->count = index + 1u;
+    }
+    status = CDIN_BACKEND_OK;
+
+cleanup:
+    if (acquired) {
+        cdin_status release_status = cdin_snapshot_release(host->kernel, snapshot);
+        if (status == CDIN_BACKEND_OK && release_status != CDIN_OK)
+            status = cdin_kernel_map_status(release_status);
+    }
+    if (status != CDIN_BACKEND_OK) {
+        cdin_host_error_details details = out_result->details;
+        uint64_t observed_version = out_result->version;
+        uint64_t observed_total_lines = out_result->total_lines;
+        cdin_kernel_host_lines_result_free(out_result);
+        /* The Lua bridge must retain structured failure data after releasing
+         * any partially allocated line buffers. */
+        out_result->details = details;
+        out_result->version = observed_version;
+        out_result->total_lines = observed_total_lines;
+    }
+    return status;
+}
+
 cdin_backend_status cdin_kernel_host_document_replace(cdin_kernel_host *host, cdin_host_handle handle,
                                                        uint64_t expected_version,
                                                        uint64_t start, uint64_t finish,

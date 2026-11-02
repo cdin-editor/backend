@@ -1,7 +1,7 @@
 /*
  * Private declarations shared by the small Lua bridge modules.
- * This header is not installed: the Lua bridge remains replaceable as one
- * implementation of OD-32 without changing the public Backend API.
+ * This header is not installed: it contains private details of the accepted
+ * PUC Lua 5.4 bridge (Spec ADR-0019), not part of the public Backend API.
  */
 #ifndef CDIN_BACKEND_RUNTIME_LUA_HOST_INTERNAL_H
 #define CDIN_BACKEND_RUNTIME_LUA_HOST_INTERNAL_H
@@ -66,6 +66,7 @@ struct cdin_lua_host {
     int host_ref;
     int runtime_ref;
     int latest_ui_ref;
+    size_t next_protocol_client;
     int started;
 };
 
@@ -109,11 +110,14 @@ int get_optional_blob(lua_State *L, int table, const char *name,
 int lua_host_info(lua_State *L);
 int lua_host_log(lua_State *L);
 int lua_ui_publish(lua_State *L);
+cdin_backend_status cdin_lua_host_dispatch_frontend(cdin_lua_host *host, size_t max_events, size_t *out_processed);
+cdin_backend_status cdin_lua_host_publish_latest_ui(cdin_lua_host *host, cdin_protocol_client *client);
 
 /* Kernel document and history callbacks. */
 int lua_doc_create(lua_State *L);
 int lua_doc_close(lua_State *L);
 int lua_doc_read(lua_State *L);
+int lua_doc_read_lines(lua_State *L);
 int lua_doc_replace(lua_State *L);
 int lua_doc_undo(lua_State *L);
 int lua_doc_redo(lua_State *L);

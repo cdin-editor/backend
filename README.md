@@ -42,13 +42,14 @@ Kernel header.
 
 ## Current status
 
-This repository contains the first standalone Backend implementation, its
-public C API, reusable Kernel-independent services, end-to-end scenarios,
-Kernel integration workflows, platform service modules, and beginner/developer
-documentation. It is **not yet a complete,
-runnable CDIN editor**. The Runtime Host API and Frontend Protocol are still
-proposed in the Spec; serialized Frontend Protocol transport is not included,
-and a full Runtime/Frontend end-to-end session is not yet available.
+This repository contains the Backend lifecycle, public C API, reusable OS/job
+services, Kernel adapter, PUC Lua 5.4 bridge, Frontend Protocol 0.2.0 codec and
+server, Runtime UI-model projection, owner-thread inbound event dispatcher,
+version-pinned line-read service, Headless Frontend harness and integration
+workflows. It is **not yet a complete runnable CDIN editor**: the inspected
+Runtime main branch still needs the matching Host API 0.3.0 patch, no concrete
+Unix Socket/Windows Named Pipe transport is included, and live Lua + Kernel +
+Frontend integration and the complete native OS matrix remain release gates.
 
 The [CDIN specification](https://github.com/cdin-editor/spec) is the source of
 truth for cross-project contracts. This README describes the current state of
@@ -146,8 +147,11 @@ private logger link requirements together.
 - A Runtime Host bridge, with Lua state owned by the Backend's creating thread.
 - Bounded worker queues and owner-thread completion delivery.
 - Portable path, filesystem, clock, thread and argument-vector process services.
-- In-process Frontend handshake, client roles, bounded output queues, flush
-  sequences, acknowledgements and backpressure.
+- In-process Frontend handshake, Driver/Observer roles, bounded input/output
+  queues, atomic UI snapshots, `ui.flush` groups, acknowledgements and backpressure.
+- Runtime UI Model projection and owner-thread inbound event dispatch.
+- Version-pinned `view.request_lines` service backed by Kernel Snapshots and
+  the public Kernel line APIs.
 - Kernel-owned logging, with Backend diagnostics routed through the Kernel log
   API rather than a second logger.
 
@@ -166,7 +170,7 @@ handshakes or shutdown.
 | [Dependencies](docs/dependencies.md) | Download, checksum verification and linking of the Kernel binary package. |
 | [Architecture](docs/architecture.md) | Module ownership, thread model and lifecycle. |
 | [Runtime Host API](docs/host-api.md) | Services exposed to the Lua Runtime. |
-| [Frontend Protocol](docs/frontend-protocol.md) | Handshake, client roles, queues and current transport limits. |
+| [Frontend Protocol](docs/frontend-protocol.md) | Message schemas, UI projection, inbound dispatch, line reads and transport limits. |
 | [OS services](docs/os-services.md) | Files, paths, processes, jobs, clocks and thread primitives. |
 | [Reuse services](docs/reusing-services.md) | Use the standalone `cdin_backend_services` library in other projects. |
 | [Integration testing](docs/integration-testing.md) | Real-world E2E and Kernel integration scenarios. |

@@ -2,6 +2,7 @@
 #define CDIN_BACKEND_PROTOCOL_H
 
 #include "backend.h"
+#include "protocol.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -10,21 +11,21 @@ extern "C" {
 #endif
 
 typedef struct cdin_protocol_client cdin_backend_frontend;
-typedef enum cdin_backend_message_type {
-    CDIN_BACKEND_MESSAGE_UI_OPTIONS = 1,
-    CDIN_BACKEND_MESSAGE_UI_STYLE_TABLE,
-    CDIN_BACKEND_MESSAGE_UI_LAYOUT,
-    CDIN_BACKEND_MESSAGE_VIEW_LINES,
-    CDIN_BACKEND_MESSAGE_VIEW_INVALIDATE,
-    CDIN_BACKEND_MESSAGE_UI_STATUSLINE,
-    CDIN_BACKEND_MESSAGE_UI_PROMPT,
-    CDIN_BACKEND_MESSAGE_UI_PANEL,
-    CDIN_BACKEND_MESSAGE_UI_NOTIFY,
-    CDIN_BACKEND_MESSAGE_CLIPBOARD_GET,
-    CDIN_BACKEND_MESSAGE_CLIPBOARD_SET,
-    CDIN_BACKEND_MESSAGE_DIALOG,
-    CDIN_BACKEND_MESSAGE_ERROR
-} cdin_backend_message_type;
+typedef cdin_protocol_message_type cdin_backend_message_type;
+
+#define CDIN_BACKEND_MESSAGE_UI_OPTIONS CDIN_PROTOCOL_UI_OPTIONS
+#define CDIN_BACKEND_MESSAGE_UI_STYLE_TABLE CDIN_PROTOCOL_UI_STYLE_TABLE
+#define CDIN_BACKEND_MESSAGE_UI_LAYOUT CDIN_PROTOCOL_UI_LAYOUT
+#define CDIN_BACKEND_MESSAGE_VIEW_LINES CDIN_PROTOCOL_VIEW_LINES
+#define CDIN_BACKEND_MESSAGE_VIEW_INVALIDATE CDIN_PROTOCOL_VIEW_INVALIDATE
+#define CDIN_BACKEND_MESSAGE_UI_STATUSLINE CDIN_PROTOCOL_UI_STATUSLINE
+#define CDIN_BACKEND_MESSAGE_UI_PROMPT CDIN_PROTOCOL_UI_PROMPT
+#define CDIN_BACKEND_MESSAGE_UI_PANEL CDIN_PROTOCOL_UI_PANEL
+#define CDIN_BACKEND_MESSAGE_UI_NOTIFY CDIN_PROTOCOL_UI_NOTIFY
+#define CDIN_BACKEND_MESSAGE_CLIPBOARD_GET CDIN_PROTOCOL_REQUEST_CLIPBOARD_GET
+#define CDIN_BACKEND_MESSAGE_CLIPBOARD_SET CDIN_PROTOCOL_REQUEST_CLIPBOARD_SET
+#define CDIN_BACKEND_MESSAGE_DIALOG CDIN_PROTOCOL_REQUEST_DIALOG
+#define CDIN_BACKEND_MESSAGE_ERROR CDIN_PROTOCOL_ERROR
 
 typedef struct cdin_backend_hello {
     uint32_t major;
@@ -44,14 +45,15 @@ typedef struct cdin_backend_hello_ack {
 
 typedef struct cdin_backend_message {
     uint32_t type;
+    uint64_t sequence;       /* Per-connection frame sequence. */
     uint64_t coalesce_key;
-    uint64_t flush_sequence;
+    uint64_t flush_sequence; /* Atomic ui.flush group acknowledged by the client. */
     const uint8_t *payload;
     size_t payload_length;
 } cdin_backend_message;
 
-/* These functions exchange semantic messages, not a serialized wire format.
- * The Spec has deliberately left JSON/binary encoding open (OD-22). */
+/* Lifecycle helpers are also useful to in-process embedders. Serialized
+ * transports use receive()/encode_message() and the same validated CBOR core. */
 cdin_backend_status cdin_backend_frontend_open(cdin_backend *backend,
                                                  cdin_backend_frontend **out_frontend);
 cdin_backend_status cdin_backend_frontend_hello(cdin_backend_frontend *frontend,
@@ -71,6 +73,29 @@ size_t cdin_backend_frontend_pending(const cdin_backend_frontend *frontend);
 cdin_backend_status cdin_backend_frontend_message_at(const cdin_backend_frontend *frontend,
                                                        size_t index,
                                                        cdin_backend_message *out_message);
+
+
+/* Accept one length-prefixed CBOR frame from an attached frontend. This API is
+ * called on the Backend/Runtime owner thread after the transport has read a
+ * complete frame; it validates schema, sequence and driver permissions before
+ * copying the event into the bounded inbound queue. */
+cdin_backend_status cdin_backend_frontend_receive(cdin_backend_frontend *frontend,
+                                                    const uint8_t *frame,
+                                                    size_t frame_length);
+size_t cdin_backend_frontend_pending_events(const cdin_backend_frontend *frontend);
+cdin_backend_status cdin_backend_frontend_event_at(const cdin_backend_frontend *frontend,
+                                                      size_t index,
+                                                      cdin_backend_message *out_message);
+cdin_backend_status cdin_backend_frontend_consume_event(cdin_backend_frontend *frontend);
+
+/* Serialize an already queued outbound semantic message into one wire frame.
+ * The result is written into the caller buffer; message payload remains borrowed
+ * from the queue and is never modified by the codec. */
+cdin_backend_status cdin_backend_frontend_encode_message(const cdin_backend_frontend *frontend,
+                                                            size_t index,
+                                                            uint8_t *output,
+                                                            size_t output_capacity,
+                                                            size_t *out_length);
 
 #ifdef __cplusplus
 }

@@ -92,7 +92,9 @@ static cdin_backend_status config_copy(const cdin_backend_config *input,
         out->max_message_bytes == 0u || out->max_message_bytes > 1024u * 1024u ||
         out->max_log_message_bytes > 1024u * 1024u ||
         out->enable_lua < 0 || out->enable_lua > 1 ||
-        out->enable_headless_protocol < 0 || out->enable_headless_protocol > 1) {
+        out->enable_headless_protocol < 0 || out->enable_headless_protocol > 1 ||
+        (out->enable_lua != 0 && out->enable_headless_protocol != 0 &&
+         out->outgoing_queue_capacity < CDIN_BACKEND_MIN_RUNTIME_UI_QUEUE_CAPACITY)) {
         free(*out_root); free(*out_entry); *out_root = NULL; *out_entry = NULL;
         return CDIN_BACKEND_INVALID_ARGUMENT;
     }

@@ -2,6 +2,7 @@
 #include "cdin/backend_protocol.h"
 #include "backend_internal.h"
 #include "platform/thread.h"
+#include <cdin/protocol.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -94,16 +95,33 @@ static int test_running_session_and_protocol(log_capture *logs)
     wrong_thread_call wrong_thread;
     uint64_t flush_sequence = 0u;
     size_t processed = 0u;
-    const uint8_t first_payload[] = "initial UI state";
-    const uint8_t latest_payload[] = "latest UI state";
-    const uint8_t other_payload[] = "other panel";
+    const uint8_t first_payload[] = { 0xa2u, 0x66u, 'l','a','y','o','u','t', 0xa2u,
+                                      0x64u, 'r','o','o','t', 0xf6u,
+                                      0x6bu, 'a','c','t','i','v','e','_','l','e','a','f', 0xf6u,
+                                      0x68u, 'r','e','v','i','s','i','o','n', 0x01u };
+    const uint8_t latest_payload[] = { 0xa2u, 0x66u, 'l','a','y','o','u','t', 0xa2u,
+                                       0x64u, 'r','o','o','t', 0xf6u,
+                                       0x6bu, 'a','c','t','i','v','e','_','l','e','a','f', 0xf6u,
+                                       0x68u, 'r','e','v','i','s','i','o','n', 0x02u };
+    const uint8_t other_payload[] = { 0xa3u, 0x65u, 'p','a','n','e','l', 0xa0u,
+                                      0x68u, 'p','a','n','e','l','_','i','d', 0x61u, 'x',
+                                      0x68u, 'r','e','v','i','s','i','o','n', 0x01u };
+    const uint8_t third_payload[] = { 0xa3u, 0x65u, 'p','a','n','e','l', 0xa0u,
+                                      0x68u, 'p','a','n','e','l','_','i','d', 0x61u, 'y',
+                                      0x68u, 'r','e','v','i','s','i','o','n', 0x02u };
+    const uint8_t paste_payload[] = { 0xa1u, 0x65u, 'b','y','t','e','s', 0x42u, 0x00u, 0xffu };
+    const uint8_t ack_payload[] = { 0xa1u, 0x68u, 's','e','q','u','e','n','c','e', 0x01u };
+    const uint8_t text_payload[] = { 0xa1u, 0x64u, 't','e','x','t', 0x61u, 'x' };
+    uint8_t frame[256];
+    size_t frame_length = 0u;
+    cdin_protocol_message_view input_view;
     cdin_backend_status status;
 
     cdin_backend_config_init(&config);
     config.enable_lua = 0;
     config.enable_headless_protocol = 1;
     config.max_frontends = 2u;
-    config.outgoing_queue_capacity = 1u;
+    config.outgoing_queue_capacity = 3u;
     config.max_pending_completions = 1u;
     config.max_message_bytes = 64u; /* Protocol payloads stay small in this scenario. */
     config.max_log_message_bytes = 16u * 1024u; /* Diagnostics use their independent cap. */
@@ -169,28 +187,69 @@ static int test_running_session_and_protocol(log_capture *logs)
     message.type = CDIN_BACKEND_MESSAGE_UI_LAYOUT;
     message.coalesce_key = 77u;
     message.payload = first_payload;
-    message.payload_length = sizeof(first_payload) - 1u;
+    message.payload_length = sizeof(first_payload);
     if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_OK) goto fail;
 
-    /* Replacing an unflushed message with the same coalesce key models rapid
-     * resize/scroll updates: only the latest layout is kept in the bounded queue. */
+    /* An unflushed state snapshot is replaced in place by its newest revision. */
     message.payload = latest_payload;
-    message.payload_length = sizeof(latest_payload) - 1u;
+    message.payload_length = sizeof(latest_payload);
     if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_OK) goto fail;
 
+    message.type = CDIN_BACKEND_MESSAGE_UI_PANEL;
     message.coalesce_key = 78u;
     message.payload = other_payload;
-    message.payload_length = sizeof(other_payload) - 1u;
+    message.payload_length = sizeof(other_payload);
+    if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_OK) goto fail;
+    message.coalesce_key = 79u;
+    message.payload = third_payload;
+    message.payload_length = sizeof(third_payload);
     if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_QUEUE_FULL) goto fail;
-    if (cdin_backend_frontend_pending(driver) != 1u) goto fail;
+    if (cdin_backend_frontend_pending(driver) != 2u) goto fail;
 
     if (cdin_backend_frontend_flush(driver, &flush_sequence) != CDIN_BACKEND_OK || flush_sequence != 1u) goto fail;
+    if (cdin_backend_frontend_pending(driver) != 3u) goto fail; /* Includes the real ui.flush message. */
     if (cdin_backend_frontend_flush(driver, &flush_sequence) != CDIN_BACKEND_BUSY) goto fail;
     if (cdin_backend_frontend_ack(driver, 99u) != CDIN_BACKEND_INVALID_ARGUMENT) goto fail;
     if (cdin_backend_frontend_message_at(driver, 0u, &message) != CDIN_BACKEND_OK) goto fail;
-    if (message.payload_length != sizeof(latest_payload) - 1u ||
+    if (message.payload_length != sizeof(latest_payload) ||
         memcmp(message.payload, latest_payload, message.payload_length) != 0) goto fail;
-    if (cdin_backend_frontend_ack(driver, 1u) != CDIN_BACKEND_OK) goto fail;
+    {
+        uint8_t encoded[256];
+        size_t encoded_length = 0u;
+        cdin_protocol_message_view decoded;
+        if (cdin_backend_frontend_encode_message(driver, 2u, encoded, sizeof(encoded), &encoded_length) != CDIN_BACKEND_OK) goto fail;
+        if (cdin_protocol_decode_frame(encoded, encoded_length, &decoded, sizeof(encoded)) != CDIN_PROTOCOL_OK ||
+            decoded.type != CDIN_PROTOCOL_UI_FLUSH || decoded.sequence != 3u) goto fail;
+    }
+
+    /* Inbound binary paste must survive byte-for-byte and observers cannot mutate. */
+    memset(&input_view, 0, sizeof(input_view));
+    input_view.major = CDIN_BACKEND_PROTOCOL_MAJOR;
+    input_view.minor = CDIN_BACKEND_PROTOCOL_MINOR;
+    input_view.sequence = 1u;
+    input_view.type = CDIN_PROTOCOL_INPUT_TEXT;
+    input_view.name_space = "core";
+    input_view.payload = text_payload;
+    input_view.payload_length = sizeof(text_payload);
+    if (cdin_protocol_encode_frame(&input_view, frame, sizeof(frame), &frame_length, sizeof(frame)) != CDIN_PROTOCOL_OK) goto fail;
+    if (cdin_backend_frontend_receive(observer, frame, frame_length) != CDIN_BACKEND_PERMISSION_DENIED) goto fail;
+    input_view.type = CDIN_PROTOCOL_INPUT_PASTE;
+    if (cdin_protocol_encode_frame(&input_view, frame, sizeof(frame), &frame_length, sizeof(frame)) != CDIN_PROTOCOL_OK) goto fail;
+    if (cdin_backend_frontend_receive(driver, frame, frame_length) != CDIN_BACKEND_OK) goto fail;
+    if (cdin_backend_frontend_pending_events(driver) != 1u) goto fail;
+    if (cdin_backend_frontend_event_at(driver, 0u, &message) != CDIN_BACKEND_OK ||
+        message.type != CDIN_PROTOCOL_INPUT_PASTE || message.payload_length != sizeof(paste_payload) ||
+        memcmp(message.payload, paste_payload, sizeof(paste_payload)) != 0) goto fail;
+    if (cdin_backend_frontend_consume_event(driver) != CDIN_BACKEND_OK) goto fail;
+    if (cdin_backend_frontend_receive(driver, frame, frame_length) != CDIN_BACKEND_INVALID_ARGUMENT) goto fail;
+
+    /* Wire ACK payload references the flush group, not the frame sequence. */
+    input_view.sequence = 2u;
+    input_view.type = CDIN_PROTOCOL_ACK;
+    input_view.payload = ack_payload;
+    input_view.payload_length = sizeof(ack_payload);
+    if (cdin_protocol_encode_frame(&input_view, frame, sizeof(frame), &frame_length, sizeof(frame)) != CDIN_PROTOCOL_OK) goto fail;
+    if (cdin_backend_frontend_receive(driver, frame, frame_length) != CDIN_BACKEND_OK) goto fail;
     if (cdin_backend_frontend_pending(driver) != 0u) goto fail;
 
     /* When the driver leaves, the oldest attached observer is promoted. */
@@ -215,7 +274,8 @@ static int test_running_session_and_protocol(log_capture *logs)
     if (!contains(logs->text, "[BACKEND][PROTOCOL]")) return 1;
     if (!contains(logs->text, "backend.c:") || !contains(logs->text, "cdin_backend_start()")) return 1;
     if (!contains(logs->text, "hello_version_rejected") ||
-        !contains(logs->text, "message_queue_full") || !contains(logs->text, "ack_rejected")) return 1;
+        !contains(logs->text, "message_queue_full") || !contains(logs->text, "ack_rejected") ||
+        !contains(logs->text, "observer_mutation_rejected")) return 1;
     if (logs->warnings == 0u || logs->infos == 0u || logs->debugs == 0u ||
         logs->traces == 0u || logs->records < 8u) return 1;
     (void)puts("PASS backend_session: Kernel linkage, diagnostics, lifecycle, thread ownership, handshake, queue coalescing, backpressure, ACK and driver promotion");

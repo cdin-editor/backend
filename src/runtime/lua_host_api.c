@@ -16,8 +16,11 @@ int lua_host_info(lua_State *L)
     push_version(L, 1u, 0u, 0u); lua_setfield(L, -2, "extension_contract");
     push_version(L, CDIN_BACKEND_PROTOCOL_MAJOR, CDIN_BACKEND_PROTOCOL_MINOR, CDIN_BACKEND_PROTOCOL_PATCH);
     lua_setfield(L, -2, "frontend_protocol");
-    lua_createtable(L, 0, 8);
+    lua_createtable(L, 0, 10);
     lua_pushboolean(L, 1); lua_setfield(L, -2, "documents");
+    lua_pushboolean(L, 1); lua_setfield(L, -2, "document_lines");
+    lua_pushboolean(L, host->backend->config.enable_headless_protocol != 0);
+    lua_setfield(L, -2, "frontend_events");
     lua_pushboolean(L, cdin_kernel_host_has_feature(host->backend->kernel, CDIN_HOST_FEATURE_NOTIFICATIONS)); lua_setfield(L, -2, "notifications");
     lua_pushboolean(L, cdin_kernel_host_has_feature(host->backend->kernel, CDIN_HOST_FEATURE_SNAPSHOTS)); lua_setfield(L, -2, "snapshots");
     lua_pushboolean(L, cdin_kernel_host_has_feature(host->backend->kernel, CDIN_HOST_FEATURE_TRANSACTIONS)); lua_setfield(L, -2, "transactions");
@@ -156,18 +159,6 @@ int lua_host_log(lua_State *L)
     return 1;
 }
 
-int lua_ui_publish(lua_State *L)
-{
-    cdin_lua_host *host = (cdin_lua_host *)lua_touserdata(L, lua_upvalueindex(1));
-    if (!lua_istable(L, 2)) return raise_argument(L, "ui.publish model");
-    lua_pushvalue(L, 2);
-    if (host->latest_ui_ref != LUA_NOREF) luaL_unref(L, LUA_REGISTRYINDEX, host->latest_ui_ref);
-    host->latest_ui_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-    /* The semantic model is retained in-process. OD-22 keeps the serialized
-     * transport encoding open, so this layer does not invent a JSON/binary wire. */
-    lua_pushboolean(L, 1);
-    return 1;
-}
 
 
 #endif

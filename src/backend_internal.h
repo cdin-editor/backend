@@ -41,6 +41,8 @@ void cdin_backend_protocol_log_sink(void *context, int level, const char *event,
                                     uint64_t client_id, cdin_backend_status status,
                                     uint64_t detail);
 void cdin_lua_host_destroy(cdin_lua_host *host);
+cdin_backend_status cdin_lua_host_dispatch_frontend(cdin_lua_host *host, size_t max_events, size_t *out_processed);
+cdin_backend_status cdin_lua_host_publish_latest_ui(cdin_lua_host *host, cdin_protocol_client *client);
 cdin_backend_status cdin_lua_host_start(cdin_backend *backend, cdin_lua_host **out_host);
 cdin_backend_status cdin_lua_host_pump(cdin_lua_host *host, size_t max_events, size_t *out_processed);
 cdin_backend_status cdin_lua_host_shutdown(cdin_lua_host *host);

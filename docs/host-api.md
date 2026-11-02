@@ -1,129 +1,153 @@
-# Runtime Host API
+# Runtime Host API 0.3.0
 
-Runtime does not call the Kernel directly. It calls a table named `host`, which the Backend creates. This document describes the services supplied by that table.
+Runtime does not call the Kernel directly. It calls a table named `host`, which
+the Backend creates. This page documents the Host services implemented by this
+Backend source snapshot.
 
-The contract version is Host API `0.2.0`. It is provisional and must be version-checked by Runtime.
+Backend reports Host API `0.3.0`, Kernel ABI `1.1.x` and Frontend Protocol
+`0.2.0`. Host API `0.x` is provisional: Runtime must require the exact major
+and minor version. The Runtime repository's inspected `main` source still
+requires `0.2.x`; apply the companion Runtime integration patch before live
+startup. Never disable or weaken the version guard to hide a mismatch.
 
-## 1. Host information
+## 1. Host descriptor
 
-`host:info()` returns version numbers and feature descriptions. The Backend queries the Kernel first, then reports the versions that it actually detected. It must not claim regex search when Kernel ABI 1.1.0 does not provide it.
+`host:info()` reports the ABI/version actually detected from the Kernel and the
+capabilities exposed by Backend. In addition to the established document,
+notification, snapshot, transaction, batch, search, UI and logging features,
+Host API `0.3.0` reports:
 
-The logging descriptor identifies the shared logger:
+- `document_lines = true`: bounded version-pinned byte line-window reads;
+- `frontend_events = true|false`: true only when the in-process Protocol server
+  is enabled and the Lua event dispatcher is compiled in.
+
+Runtime requires `document_lines`. `frontend_events` is a boolean optional
+capability; a Runtime can still run without Frontend clients when it is false.
+
+The logging descriptor identifies the single Kernel-owned logger:
 
 ```lua
 logging = {
   provider = "cdin-kernel",
   levels = { "error", "warn", "info", "debug", "trace", "fatal" },
-  max_message_bytes = 16384, -- Kernel logger record limit
+  max_message_bytes = 16384,
 }
 ```
 
-The logger limit is configured with `max_log_message_bytes` (default 16 KiB) and is independent from `max_message_bytes`, which limits Frontend Protocol payloads. The logger limit is passed to the Kernel logger and can be set from 1 byte through 1 MiB. In `host.info()`, `logging.max_message_bytes` reports the logger limit, not the Protocol payload limit.
+`logging.max_message_bytes` is the Kernel logger record limit. It is independent
+of `max_message_bytes`, which limits each Frontend Protocol payload.
 
 ## 2. Document service
 
-`host.documents` contains these methods:
+`host.documents` provides opaque Kernel-backed document handles. The relevant
+methods are:
 
 | Method | Purpose |
 |---|---|
-| `create(initial_bytes, metadata?)` | Ask Kernel to create a document. Returns an opaque handle, version, and length. |
-| `close(handle)` | Close the document after its views have been removed. |
-| `read(handle, request)` | Read a bounded byte range, optionally requiring a particular version. |
-| `replace(handle, request)` | Apply one half-open byte-range edit. |
-| `replace_batch(handle, request)` | Apply a list of non-overlapping edits as one history item. |
-| `undo(handle, request)` / `redo(handle, request)` | Move backward or forward in Kernel history. |
-| `acquire_snapshot(handle)` | Pin a version so a save or background read sees stable bytes. |
-| `read_snapshot(handle, request)` / `release_snapshot(handle)` | Read and release that pinned version. |
-| `begin_transaction(handle, request)` | Start a Kernel-owned tentative edit. |
-| `transaction_replace(handle, edit)` / `transaction_read(handle, request)` | Edit or read the tentative state. |
-| `commit_transaction(handle, request)` / `abort_transaction(handle)` | Finish or discard a transaction. |
-| `mark_clean(handle)` / `mark_clean_if_version(handle, version)` | Mark a document as saved. The conditional form compares and marks on the owner thread. |
-| `is_clean(handle)` | Ask whether the current document version is marked clean. |
-| `subscribe(handle)` / `unsubscribe(handle)` | Subscribe to Kernel document notifications. |
-| `drain(handle, max_events)` | Read a bounded batch of notifications. |
-| `search(handle, request)` | Search with literal or byte mode. Regex returns `UNSUPPORTED`. |
+| `create(initial_bytes, metadata?)` / `close(handle)` | Create or close a Kernel document. |
+| `read(handle, request)` | Read a bounded byte range; `start=0,length=0,expected_version=nil` refreshes latest metadata only. |
+| `read_lines(handle, request)` | Read complete logical line byte strings from one immutable Kernel Snapshot. |
+| `replace(handle, request)` / `replace_batch(handle, request)` | Apply one or several half-open byte-range edits. |
+| `undo(handle, request)` / `redo(handle, request)` | Move through Kernel-owned history. |
+| `acquire_snapshot(handle)` / `read_snapshot(handle, request)` / `release_snapshot(handle)` | Explicit version-pinned byte reads. |
+| `begin_transaction(handle, request)` / `transaction_replace()` / `transaction_read()` | Use a Kernel-owned tentative version. |
+| `commit_transaction()` / `abort_transaction()` | Commit or discard tentative changes. |
+| `mark_clean()` / `mark_clean_if_version()` / `is_clean()` | Maintain saved-state metadata. |
+| `subscribe()` / `unsubscribe()` / `drain()` | Consume bounded Kernel document notifications. |
+| `search(handle, request)` | Literal or byte search; regex returns `UNSUPPORTED`. |
 
-All document handles and snapshot/transaction/subscription handles are opaque Lua userdata. Runtime never sees a raw Kernel pointer or handle.
-
-### Edit ranges
-
-All positions are zero-based byte offsets. A replacement covers `[start, finish)`: `start` is included and `finish` is excluded. Batch edits must be ordered and must not overlap in the same pre-edit version.
-
-### Reads and snapshots
-
-A regular read returns transient bytes for the requested range. A snapshot is a pinned version. Runtime should release every snapshot after it finishes using it, including when a save fails.
-
-### Notifications
-
-Notifications preserve their version range and edit data. If Kernel reports truncated edits or a version gap, Runtime should resynchronize from the document rather than apply an incomplete edit sequence.
-
-## 3. Error shape
-
-A failed Host call throws a Lua table similar to this:
+### `read_lines()` contract
 
 ```lua
-{
-  domain = "cdin.runtime",
-  code = "STALE_VERSION",
-  message = "documents.replace failed: STALE_VERSION",
-  details = { expected = 4, current = 5 },
-}
+host.documents:read_lines(handle, {
+  first_line = 120,       -- zero-based logical line index
+  line_count = 80,        -- 1..4096
+  expected_version = 42,  -- mandatory for a pinned Frontend request
+  max_bytes = 65536,      -- optional, bounded by the negotiated frame size
+})
+-- -> { version, first_line, total_lines, lines = { "raw bytes", ... } }
 ```
 
-The Backend preserves the Kernel status identity and available details. For example, an out-of-range request can include `requested` and `length`; a too-small output buffer can include `required`; resource limits can include `limit_id`.
+The Backend acquires a temporary `cdin_snapshot`, calls the Kernel's public
+`cdin_text_line_count()`, `cdin_text_line_start()` and `cdin_text_read()` APIs,
+then releases the snapshot before returning. A concurrent edit cannot mix line
+offsets and bytes from different versions. A stale expected version returns
+`STALE_VERSION`; a line window contains complete lines only. A bounded response
+may contain fewer than the requested number of lines, allowing the Frontend to
+continue at `first_line + #lines`. `total_lines` is captured from the same
+Kernel snapshot and is suitable for scrollbar/viewport bounds only while its
+`version` remains current. If the first line alone exceeds the byte
+budget, the call returns `LIMIT_EXCEEDED` with `required` details.
 
-| Backend/Kernel result | Runtime code |
-|---|---|
-| `INVALID_ARGUMENT` | `INVALID_ARGUMENT` |
-| `INVALID_HANDLE` / `NOT_FOUND` | `INVALID_HANDLE` |
-| `STALE_VERSION` | `STALE_VERSION` |
-| `OUT_OF_RANGE` | `OUT_OF_RANGE` |
-| `INVALID_POSITION` | `INVALID_POSITION` |
-| `INVALID_STATE` | `INVALID_STATE` |
-| `BUSY` / `QUEUE_FULL` | `BUSY` |
-| `LIMIT_EXCEEDED` | `LIMIT_EXCEEDED` |
-| `NO_MEMORY` | `NO_MEMORY` |
-| `PATTERN_INVALID` | `PATTERN_INVALID` |
-| `CANCELLED` | `CANCELLED` |
-| `SHUTDOWN` | `SHUTDOWN` |
-| `UNSUPPORTED` | `UNSUPPORTED` |
-| `BUFFER_TOO_SMALL` | `BUFFER_TOO_SMALL` |
-| `VERSION_MISMATCH` | `VERSION_MISMATCH` |
-| Unclassified failure | `INTERNAL` |
+Each returned Lua string is a transient byte string, not retained on the
+Runtime document client. Line terminators are included exactly as stored by the
+Kernel. NUL and invalid UTF-8 are preserved. A final empty logical line is
+returned when the document ends with a line terminator.
 
-## 4. UI service
+## 3. UI service and Frontend projection
 
-`host.ui:publish(model_snapshot)` accepts the Runtime's semantic UI model. A semantic model describes what should appear — views, logical positions, spans, and status content — rather than pixels or terminal cells.
+`host.ui:publish(model_snapshot)` accepts a semantic `cdin.ui-model.v1` table.
+It is not forwarded as Lua data. Backend retains the newest semantic snapshot
+in the Lua registry and projects it to deterministic-CBOR messages for every
+attached Frontend:
 
-In this first implementation, the most recently published Lua model is retained in the Backend's in-process Lua registry. It is not yet encoded or delivered to external Frontends. That delivery depends on the still-open serialized Protocol decision.
+1. `ui.options` and `ui.style_table`;
+2. `ui.layout`, `ui.statusline` and `ui.prompt`;
+3. `view.cursor` (including the logical byte `scroll_anchor`), `view.selection`
+   and full-document `view.invalidate` for each visible view;
+4. one `ui.panel` per panel in the current snapshot;
+5. a final `ui.flush` with `scope="snapshot"`, the exact model `revision` and a
+   per-client flush-group `sequence`.
 
-## 5. Logging service
+The entire model projection is validated, bounded and queued atomically. The
+combined projection stays within the configured per-message budget, leaving
+space for its final flush marker. A failed or backpressured publication does
+not roll back Runtime state and never exposes a partial UI snapshot. Backend
+retains the newest snapshot and retries a lagging attached client after an ACK
+frees queue capacity; a detached client receives a fresh full snapshot on its
+next attach.
 
-`host:log(level, message, fields?)` forwards messages to the single Kernel-owned logger through `cdin_kernel_log`. Backend does not create a second logger and does not bind `m-mdy-m/log.c` directly.
+`view.request_lines` is answered as a `view.lines` response group with
+`scope="response"`. A response flush does not replace the Frontend's whole UI
+state. See [Frontend Integration Guide](frontend-integration.md) for the exact
+wire shapes and application sequence.
 
-The valid levels are `error`, `warn`, `info`, `debug`, `trace`, and `fatal`. Their Kernel numeric values are not in severity order, so threshold checks must use severity rules rather than comparing the enum integers.
+## 4. Inbound event dispatch
 
-Runtime log messages are bounded by `info.logging.max_message_bytes`. The Backend's default is 16 KiB and is controlled by `max_log_message_bytes`. The optional `fields` table supports a limited number of short scalar values; because the Kernel logging ABI has no structured-fields parameter, Backend appends supported metadata to the message representation.
+`cdin_backend_frontend_receive()` validates a complete frame, its schema,
+sequence and client role, then copies non-handshake messages into a bounded
+inbound queue. `cdin_backend_pump()` calls the Lua Host pump on the Backend
+owner thread. The event dispatcher decodes payloads to Lua values and invokes
+`Runtime:handle_frontend_event()`; `view.request_lines` has a dedicated
+version-pinned path to `Runtime:read_view_lines()`.
 
-A message filtered by the configured log threshold is not an operation failure. The logging call returns `false` when the record is not accepted.
+The dispatcher covers key, text, paste, mouse, resize, focus, view-position and
+command events. It never calls Lua from a worker thread. Driver-only mutation
+messages are rejected from Observer clients before queuing; line-window reads
+are available to either attached role.
 
-## 6. Optional atomic file service
+## 5. Errors and logging
 
-The Backend provides `host.fs` methods for atomic save:
+A failed Host operation throws a Lua error table with a stable `code` and
+machine-readable details. Kernel identities such as `STALE_VERSION`,
+`OUT_OF_RANGE`, `LIMIT_EXCEEDED`, `NO_MEMORY` and `UNSUPPORTED` are preserved.
 
-- `begin_atomic_write(path, options)` creates a temporary writer;
-- `write_chunk(writer, bytes)` appends a bounded chunk;
-- `commit_atomic_write(writer)` atomically publishes the completed file;
-- `abort_atomic_write(writer)` discards the temporary file.
+`host:log(level, message, fields?)` forwards to `cdin_kernel_log`. Backend does
+not create a second logger, bind `log.c`, or write Runtime records to stdout.
+Logging failures never change the operation being logged.
 
-The default overwrite behaviour is enabled. Passing `{ overwrite = false }` prevents replacing an existing destination. Runtime should snapshot a document, stream its bytes in chunks, commit the file, and then call `mark_clean_if_version` so edits made during the save are not accidentally marked clean.
+## 6. Ownership and threading
 
-## 7. System services
+All Host calls that touch Kernel or Lua state run on the Backend owner thread.
+The Backend owns opaque Lua userdata handles; Runtime never receives native
+pointers or Kernel handles. Worker threads may return plain data through the
+Backend completion queue, but must never enter the Lua state.
 
-`host.system.time` supplies monotonic nanoseconds and wall-clock seconds. `host.system.process.spawn` starts a process from an argv array. It never joins user-provided arguments into a shell command.
+## 7. Current verification boundary
 
-The process handle can be polled, waited on with a timeout, read from stdout/stderr, terminated, and closed. These operations are described in [Operating-system services](os-services.md).
-
-## 8. Threading rule
-
-Every Runtime Host service that touches Lua or Kernel state is called on the Backend owner thread. Worker threads must return plain data to the owner thread; they must not invoke the Host API themselves.
+Protocol-only and service tests pass in this workspace. The actual Runtime
+repository remains a separate, read-only inspected source tree; the companion
+patch must be applied and reviewed there. A production build with real Lua 5.4
+development headers and the installed Kernel package, plus live Runtime/Kernel
+integration tests, has not yet been executed. The OS transport adapters are
+also not part of this source snapshot.

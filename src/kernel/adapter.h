@@ -42,6 +42,14 @@ typedef struct cdin_host_error_details {
     uint64_t expected, current, requested, length, required;
 } cdin_host_error_details;
 typedef struct cdin_host_read_result { uint8_t *bytes; size_t length; uint64_t version; uint64_t total_length; uint32_t flags; cdin_host_error_details details; } cdin_host_read_result;
+typedef struct cdin_host_line { uint8_t *bytes; size_t length; } cdin_host_line;
+typedef struct cdin_host_lines_result {
+    cdin_host_line *lines;
+    size_t count;
+    uint64_t version;
+    uint64_t total_lines;
+    cdin_host_error_details details;
+} cdin_host_lines_result;
 typedef struct cdin_host_edit_result {
     uint64_t version, accepted_sequence, start, removed, inserted, new_length;
     uint32_t edit_count;
@@ -90,6 +98,14 @@ cdin_backend_status cdin_kernel_host_document_read(cdin_kernel_host *host, cdin_
                                                     int has_expected, uint64_t expected,
                                                     cdin_host_read_result *out_result);
 void cdin_kernel_host_read_result_free(cdin_host_read_result *result);
+cdin_backend_status cdin_kernel_host_document_read_lines(cdin_kernel_host *host,
+                                                          cdin_host_handle handle,
+                                                          uint64_t first_line,
+                                                          size_t line_count,
+                                                          uint64_t expected_version,
+                                                          size_t max_bytes,
+                                                          cdin_host_lines_result *out_result);
+void cdin_kernel_host_lines_result_free(cdin_host_lines_result *result);
 cdin_backend_status cdin_kernel_host_document_replace(cdin_kernel_host *host, cdin_host_handle handle,
                                                        uint64_t expected_version,
                                                        uint64_t start, uint64_t finish,

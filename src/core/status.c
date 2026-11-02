@@ -28,7 +28,7 @@ const char *cdin_backend_status_name(cdin_backend_status status)
         "OK", "INVALID_ARGUMENT", "INVALID_STATE", "NO_MEMORY", "UNSUPPORTED",
         "VERSION_MISMATCH", "LIMIT_EXCEEDED", "QUEUE_FULL", "NOT_FOUND", "BUSY", "STALE_VERSION",
         "OUT_OF_RANGE", "INVALID_POSITION", "PATTERN_INVALID", "BUFFER_TOO_SMALL", "SHUTDOWN",
-        "IO_ERROR", "CANCELLED", "INTERNAL"
+        "IO_ERROR", "CANCELLED", "INTERNAL", "PERMISSION_DENIED"
     };
     if ((unsigned)status >= CDIN_BACKEND_ARRAY_COUNT(names)) return "UNKNOWN";
     return names[(unsigned)status];
@@ -45,5 +45,5 @@ const char *cdin_backend_state_name(cdin_backend_state state)
 
 const char *cdin_backend_version(void)
 {
-    return "0.1.0";
+    return "0.2.0";
 }

@@ -1,3 +1,8 @@
+## Unreleased
+
+- Add standalone deterministic-CBOR Frontend Protocol codec, bounded bidirectional queues, headless replay tests and fuzz entry point.
+- Resolve Spec ADR-0018/0019 links and document remaining Runtime, transport, Kernel/Lua and platform integration gates.
+
 # Changelog
 
 All notable changes to the Backend are recorded here. This project follows Semantic Versioning while the `0.x` API remains provisional.
@@ -13,7 +18,7 @@ All notable changes to the Backend are recorded here. This project follows Seman
 
 - C11 Backend lifecycle with create, start, pump, shutdown, and destroy operations.
 - Kernel ABI 1.1.0+ adapter with ABI/feature checks and generation-checked document, snapshot, transaction, and notification handles.
-- Runtime Host API 0.2.0 bridge for document operations, snapshots, transactions, undo/redo, notifications, literal/byte search, UI model publication, logging, atomic file saves, clocks, and child processes.
+- Initial Runtime Host API bridge for document operations, snapshots, transactions, undo/redo, notifications, literal/byte search, UI model publication, logging, atomic file saves, clocks, and child processes. The current Backend API version is 0.3.0; see `docs/host-api.md`.
 - Kernel-owned logger configuration through the Kernel C ABI; public Backend log-level constants keep the Kernel ABI private to one adapter module, and no second Backend logger is created.
 - Session metadata and view lifecycle management without duplicating document contents.
 - Bounded worker pool with owner-thread completion callbacks and cooperative cancellation.
@@ -27,7 +32,7 @@ All notable changes to the Backend are recorded here. This project follows Seman
 
 ### Known limitations
 
-- Serialized Frontend Protocol encoding and transports remain deferred while Spec OD-22 is open.
+- Historical note: at this release snapshot, the Frontend Protocol wire encoding was not yet decided. Spec ADR-0018 now settles deterministic CBOR framing; this Backend version implements the codec but not OS transports or Runtime projection/dispatch.
 - Runtime UI models are retained in-process but are not yet translated into Frontend messages.
 - Optional Frontend capability bit assignments and concurrent multi-driver mutation remain open Spec decisions.
 - Lua 5.4 and cross-platform builds require validation in environments with their development toolchains.

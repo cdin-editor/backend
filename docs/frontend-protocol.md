@@ -1,82 +1,50 @@
-# Frontend Protocol
+# Frontend Protocol 0.2.0 — Backend implementation status
 
-A Frontend is the part of `cdin` that accepts user input and draws the interface. It might use a GUI toolkit, a terminal, or no display at all. The Backend protocol describes the information exchanged between those parts without choosing how a screen is drawn.
+The normative contract is owned by the [CDIN Spec wire contract](https://github.com/cdin-editor/spec/blob/main/docs/architecture/protocol-wire.md), [UI Model v1](https://github.com/cdin-editor/spec/blob/main/docs/architecture/ui-model-v1.md) and [ADR-0018](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0018-frontend-protocol-wire.md). This page records the implemented Backend source and its remaining integration boundaries.
 
-The Spec marks the Frontend Protocol as **proposed**. Its byte-level transport is not final.
+## 1. Implemented layers
 
-## 1. The model: Backend owns meaning, Frontend owns presentation
+| Layer | Source | Implemented behavior | Not implied |
+|---|---|---|---|
+| Wire codec | `include/cdin/protocol.h`, `src/protocol/codec.c` | Deterministic-CBOR frame encode/decode, 4-byte big-endian framing, complete v0.2.0 payload schemas, canonical map validation, bounded depth/frame size, partial read/write callbacks | No socket, named-pipe, authentication or network listener |
+| Per-client server | `src/protocol/server.c` | Handshake, one Driver lease, Observer permissions, oldest-client promotion, bounded queues, payload copies, coalescing, atomic snapshot/response batches, flush scopes, ACK validation and per-client snapshot revision tracking | No concurrent writer or last-writer-wins semantics |
+| Backend C facade | `include/cdin/backend_protocol.h`, `src/protocol/backend_protocol.c` | Typed client API, receive validation/queue, output frame encoding, attach snapshot replay and ACK-triggered retry of a newer missed snapshot | Requires caller to supply transport I/O |
+| Lua UI projection | `src/runtime/lua_host_protocol.c` | Validates `cdin.ui-model.v1` fields, deterministically serializes semantic maps, converts split ratios to integer basis points, projects options/styles/layout/status/prompt/views/panels and atomically appends `ui.flush` | Runtime source patch must be applied to the separate Runtime repository |
+| Inbound Runtime dispatch | `src/runtime/lua_host_protocol.c`, `src/runtime/lua_host.c` | Drains validated events on Lua owner thread; dispatches `handle_frontend_event`; handles `view.request_lines` and response generation | Does not provide platform transport |
+| Kernel line window | `src/kernel/adapter_documents.c`, `src/runtime/lua_host_documents.c` | Temporary immutable Snapshot, version check, Kernel line-index APIs, complete binary-safe line byte strings and bounded payload budget | No persistent/shadow text buffer |
+| Headless client | `tests/headless/headless_frontend.c` | Display-free encode/decode, binary input, event record and deterministic replay | Not a GUI toolkit or OS transport |
 
-The Backend and Runtime decide which documents and views exist, what logical positions are selected, and what the status line should say. A Frontend decides how that information fits a window or terminal.
+The standalone `cdin_protocol` target depends only on the C standard library and can be built with `CDIN_BUILD_BACKEND=OFF`, without Kernel or Lua development packages.
 
-The protocol should not send font-specific line wrapping, pixel positions, or terminal cells as document meaning. A Frontend can calculate those details for its own display.
+## 2. Frame and sequence contract
 
-## 2. Connection lifecycle
+Each stream frame is a four-byte unsigned big-endian body length followed by one deterministic-CBOR envelope. The body cap defaults to 1 MiB. The envelope fields are `v`, `ns`, `seq`, `type` and `payload`. `seq` counts every message per connection. `ui.flush.payload.sequence` is a separate flush-group ID and is the value carried by `ack.payload.sequence`.
 
-Every connection follows this order:
+`ui.flush.payload.scope` is `snapshot` or `response`. A snapshot flush must include `revision`; a response flush must not. The Frontend stages a complete snapshot and replaces its semantic UI state only after the snapshot flush. Response groups never clear UI state. `view.cursor.scroll_anchor` is a zero-based document byte offset; `view.lines.total_lines` is the logical line count observed in the same Kernel Snapshot as the returned lines.
 
-1. Open a Frontend client.
-2. Send `hello` with the Frontend Protocol major/minor version, a name, and requested capability bits.
-3. Receive `hello_ack` with the selected protocol version, accepted capabilities, client ID, and session ID.
-4. Attach to the session.
-5. Exchange semantic messages.
-6. Acknowledge each applied flush sequence.
-7. Detach and close.
+Protocol v0.2.0 does not encode floating-point values. Pane split ratios are converted to `ratio_bp` integer basis points (`1000..8999`). All opaque content, including `input.paste` and `view.lines[].bytes`, remains CBOR byte strings.
 
-The handshake is mandatory. An incompatible major/minor pair returns `VERSION_MISMATCH`.
+## 3. Implemented publication and inbound paths
 
-## 3. Driver and observers
+`lua_ui_publish()` retains the latest semantic snapshot, projects it for each attached Client, and calls the atomic `cdin_protocol_publish_snapshot()` operation. Every message is schema-validated before the whole message group plus final flush marker is committed to that Client's bounded queue. The combined snapshot has a total byte budget as well as per-message limits. Queue pressure leaves Runtime authoritative state intact and marks the Client behind; when an ACK frees capacity, Backend retries only if the cached revision is newer than the last snapshot revision queued for that Client. Detach resets this state; attach sends a full snapshot.
 
-The protocol currently implements a provisional single-driver rule because Spec decision OD-24 is still open:
+Inbound `cdin_backend_frontend_receive()` performs frame/schema/direction/sequence/permission checks and copies valid events to a bounded queue. `cdin_backend_pump()` runs the Lua Host pump on the owner thread. The dispatcher calls `Runtime:handle_frontend_event()` for key, text, paste, mouse, resize, focus, view-position and command events. `view.request_lines` calls `Runtime:read_view_lines()` and returns a response-scoped `view.lines` batch.
 
-- The first attached Frontend becomes the **driver** and may mutate session state.
-- Later attached Frontends are **observers**. They can receive messages but `cdin_backend_frontend_can_mutate()` returns false.
-- When the driver detaches, the next attached client becomes the driver.
+## 4. Document line-window semantics
 
-This rule is an interim policy, not a permanent architecture decision. Once OD-24 is accepted, this module can change without modifying Kernel or Runtime.
+`view.request_lines` includes `view_id`, zero-based `first_line`, `line_count` (`1..4096`) and a required document `version`. Backend reads through a temporary Kernel Snapshot and checks the version before calculating line offsets or copying bytes. The `view.lines.lines` array contains maps with one `bytes` CBOR byte string each; `total_lines` gives the logical line count at the same version. Original EOL bytes, NUL and invalid UTF-8 are preserved. Only complete lines are returned; a too-large first line produces a structured limit error, and a partial line is never sent. A stale version produces `STALE_VERSION` and requires a fresh model/line request.
 
-## 4. Bounded queues and frame acknowledgements
+## 5. Remaining integration gates
 
-Each Frontend has its own outgoing queue. The queue has a configured maximum number of messages and each payload has a configured maximum byte size. When the queue is full, enqueue returns `QUEUE_FULL` unless an unflushed message with the same message type and non-zero coalescing key can be replaced by the newer value.
+The Backend Protocol/Runtime bridge source is implemented in this local source snapshot, but the following must still happen before production Frontend use:
 
-A `flush` marks all messages that have not yet been flushed with one monotonically increasing sequence number. The Backend refuses to create more than the configured number of unacknowledged flushes. The Frontend sends `ack(sequence)` after it has applied the update. Messages covered by the acknowledgement are removed from its queue.
+1. Apply and review `integration/runtime-patch/apply_runtime_integration.py` in a `cdin-editor/runtime` checkout. That patch aligns Runtime Host API `0.3.0` and Protocol `0.2.0`, adds `document_lines`, `read_lines()`, UI-model style/version fields, event dispatch and FakeHost/integration tests. The public Runtime repository was inspected read-only and was not changed or pushed.
+2. Build against real PUC Lua 5.4 development files and the installed `cdin-kernel` package, then run the real Runtime + Kernel integration suite. The required development dependencies are unavailable in this workspace.
+3. Implement concrete Unix Domain Socket and Windows Named Pipe transports if the Frontend is a separate process. The codec's partial-I/O callbacks do not themselves open a transport.
+4. Run the current-commit Linux/macOS/Windows matrix and live two-client GUI/headless conformance tests.
 
-A message payload is owned by the queue after enqueue. A pointer returned by `cdin_backend_frontend_message_at()` is borrowed and remains valid only until the queue is changed or the client is closed. Copy it before retaining it.
+See [Frontend Integration Guide](frontend-integration.md), [Host API](host-api.md), [Spec traceability](spec-traceability.md) and [1.0.0 readiness](1.0.0-readiness.md).
 
-## 5. In-process API example
+## 6. Message catalogue
 
-```c
-#include "cdin/backend.h"
-#include "cdin/backend_protocol.h"
-
-cdin_backend_frontend *frontend = NULL;
-cdin_backend_hello hello = { 0u, 1u, "example-ui", 0u };
-cdin_backend_hello_ack ack;
-
-if (cdin_backend_frontend_open(backend, &frontend) == CDIN_BACKEND_OK &&
-    cdin_backend_frontend_hello(frontend, &hello, &ack) == CDIN_BACKEND_OK &&
-    cdin_backend_frontend_attach(frontend) == CDIN_BACKEND_OK) {
-    /* The frontend is attached. Check ack.driver before sending mutations. */
-}
-```
-
-The Frontend API is owner-thread-only. Call it on the same thread that owns the Backend lifecycle.
-
-## 6. Current message surface
-
-The public header declares message types for UI options, style tables, layout, visible view lines, invalidations, status line, prompt, panels, notifications, clipboard, dialogs, and errors.
-
-The queue accepts payload bytes without interpreting them. The C library does not yet define a stable schema for those payloads. This is intentional: a protocol message's conceptual payload and its wire encoding are separate design questions.
-
-## 7. What is not implemented yet
-
-The protocol implementation in `0.1.0` provides in-process lifecycle and backpressure semantics only. It does not:
-
-- serialize payloads to JSON, MessagePack, CBOR, or a custom binary format;
-- open sockets, named pipes, or terminal streams;
-- validate a serialized message schema;
-- automatically convert `host.ui:publish(model)` into the declared message catalogue;
-- negotiate named optional capabilities.
-
-The current capability bitmap is deliberately conservative: no optional capability bits are accepted until the Spec defines their numeric mapping. The mandatory `core` namespace does not need an optional capability bit.
-
-See [Known limitations](limitations.md) for the open Spec decisions that control the next step.
+The public enum and validator cover: `hello`, `hello_ack`, `attach`, `detach`, `detach_ack`, `ack`, `input.key`, `input.text`, `input.mouse`, `input.paste`, `window.resize`, `focus`, `view.request_lines`, `view.set_position`, `request.command`, `response.clipboard`, `response.dialog`, `ui.options`, `ui.style_table`, `ui.layout`, `view.lines`, `view.invalidate`, `view.cursor`, `view.selection`, `ui.statusline`, `ui.prompt`, `ui.panel`, `ui.notify`, `request.clipboard_get`, `request.clipboard_set`, `request.dialog`, `error` and `ui.flush`.

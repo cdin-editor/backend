@@ -83,6 +83,87 @@ int lua_doc_read(lua_State *L)
     return 1;
 }
 
+int lua_doc_read_lines(lua_State *L)
+{
+    cdin_lua_host *host = (cdin_lua_host *)lua_touserdata(L, lua_upvalueindex(1));
+    cdin_lua_handle *handle = check_handle(L, 2, CDIN_LUA_DOCUMENT);
+    cdin_host_lines_result result;
+    uint64_t first_line;
+    uint64_t requested_count;
+    uint64_t expected;
+    uint64_t max_bytes_value;
+    uint64_t frame_limit;
+    uint64_t max_line_count;
+    uint64_t framing_reserve;
+    size_t index;
+    size_t max_bytes;
+    static const char empty_line = '\0';
+    cdin_backend_status status;
+
+    luaL_checktype(L, 3, LUA_TTABLE);
+    first_line = field_u64(L, 3, "first_line", 0u);
+    requested_count = field_u64(L, 3, "line_count", 0u);
+    expected = field_u64(L, 3, "expected_version", UINT64_MAX);
+    frame_limit = host->backend->config.max_message_bytes;
+
+    /* Reserve the fixed view.lines envelope separately from every line item.
+     * A line map has a text key and byte-string header even when bytes are empty.
+     * The 12-byte per-line bound covers the largest CBOR length header for the
+     * configured 1 MiB frame limit; 256 bytes covers map keys and a 128-byte id.
+     * Limiting both count and content prevents many empty lines from overflowing
+     * the final CBOR frame after the Kernel has already produced the response. */
+    if (frame_limit <= 256u) {
+        return raise_status(L, CDIN_BACKEND_LIMIT_EXCEEDED, "documents.read_lines", NULL);
+    }
+    max_line_count = (frame_limit - 256u) / 24u;
+    if (max_line_count == 0u) {
+        return raise_status(L, CDIN_BACKEND_LIMIT_EXCEEDED, "documents.read_lines", NULL);
+    }
+    if (requested_count == 0u || requested_count > 4096u) {
+        return raise_status(L, CDIN_BACKEND_LIMIT_EXCEEDED, "documents.read_lines", NULL);
+    }
+    if (requested_count > max_line_count) requested_count = max_line_count;
+    framing_reserve = 256u + requested_count * 12u;
+    max_bytes_value = field_u64(L, 3, "max_bytes", frame_limit - framing_reserve);
+    if (max_bytes_value == 0u || max_bytes_value > frame_limit - framing_reserve ||
+        max_bytes_value > SIZE_MAX)
+        return raise_status(L, CDIN_BACKEND_LIMIT_EXCEEDED, "documents.read_lines", NULL);
+    max_bytes = (size_t)max_bytes_value;
+
+    status = cdin_kernel_host_document_read_lines(host->backend->kernel, handle->value,
+        first_line, (size_t)requested_count, expected, max_bytes, &result);
+    if (status != CDIN_BACKEND_OK) {
+        cdin_lua_error_details details;
+        memset(&details, 0, sizeof(details));
+        if (status == CDIN_BACKEND_STALE_VERSION) {
+            details.has_expected = 1; details.expected = result.details.expected;
+            details.has_current = 1; details.current = result.details.current;
+        } else if (status == CDIN_BACKEND_OUT_OF_RANGE) {
+            details.has_requested = 1; details.requested = result.details.requested;
+            details.has_length = 1; details.length = result.details.length;
+        } else if (status == CDIN_BACKEND_LIMIT_EXCEEDED && result.details.required != 0u) {
+            details.has_required = 1; details.required = result.details.required;
+        }
+        cdin_kernel_host_lines_result_free(&result);
+        return raise_status(L, status, "documents.read_lines", &details);
+    }
+
+    lua_createtable(L, 0, 4);
+    lua_pushinteger(L, (lua_Integer)result.version); lua_setfield(L, -2, "version");
+    lua_pushinteger(L, (lua_Integer)first_line); lua_setfield(L, -2, "first_line");
+    lua_pushinteger(L, (lua_Integer)result.total_lines); lua_setfield(L, -2, "total_lines");
+    lua_createtable(L, (int)result.count, 0);
+    for (index = 0u; index < result.count; index++) {
+        const char *bytes = result.lines[index].length == 0u
+            ? &empty_line : (const char *)result.lines[index].bytes;
+        lua_pushlstring(L, bytes, result.lines[index].length);
+        lua_rawseti(L, -2, (lua_Integer)(index + 1u));
+    }
+    lua_setfield(L, -2, "lines");
+    cdin_kernel_host_lines_result_free(&result);
+    return 1;
+}
+
 int lua_doc_replace(lua_State *L)
 {
     cdin_lua_host *host = (cdin_lua_host *)lua_touserdata(L, lua_upvalueindex(1));

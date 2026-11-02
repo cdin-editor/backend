@@ -2,13 +2,12 @@
  * Runtime Host bridge. BE-007 keeps Lua on the owner thread; workers return
  * plain C data and are delivered through cdin_backend_pump().
  *
- * OD-32 is titled "Lua-to-native bridge behind the Runtime Host API" and is
- * still OPEN. The PUC Lua 5.4 C API used below is only the current candidate;
- * LuaJIT FFI and MetaCall remain alternatives. Keep the bridge behind private modules
- * so selecting another implementation does not change Kernel or OS service modules so selecting another bridge does not change Kernel or OS
- * service modules. No worker thread calls this file.
+ * ADR-0019 selects the PUC Lua 5.4 C API for the v1 private bridge. The bridge
+ * remains behind these Backend-owned modules: extensions see only the
+ * versioned Runtime Host API, never Kernel pointers or private C entry points.
+ * Worker threads never enter this file or touch the Lua state.
+ * https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0019-runtime-bridge.md
  * https://github.com/cdin-editor/spec/blob/main/docs/components/backend.md
- * https://github.com/cdin-editor/spec/blob/main/docs/adr/open-decisions.md#od-32
  */
 #include "../backend_internal.h"
 #include "../diagnostics/log.h"
@@ -28,6 +27,17 @@ cdin_backend_status cdin_lua_host_pump(cdin_lua_host *host, size_t max_events, s
 {
     (void)host; (void)max_events;
     if (out_processed != NULL) *out_processed = 0u;
+    return CDIN_BACKEND_UNSUPPORTED;
+}
+cdin_backend_status cdin_lua_host_dispatch_frontend(cdin_lua_host *host, size_t max_events, size_t *out_processed)
+{
+    (void)host; (void)max_events;
+    if (out_processed != NULL) *out_processed = 0u;
+    return CDIN_BACKEND_UNSUPPORTED;
+}
+cdin_backend_status cdin_lua_host_publish_latest_ui(cdin_lua_host *host, cdin_protocol_client *client)
+{
+    (void)host; (void)client;
     return CDIN_BACKEND_UNSUPPORTED;
 }
 cdin_backend_status cdin_lua_host_shutdown(cdin_lua_host *host)
@@ -148,9 +158,14 @@ cdin_backend_status cdin_lua_host_pump(cdin_lua_host *host, size_t max_events, s
 {
     lua_State *L;
     int base;
+    size_t frontend_processed = 0u;
+    size_t notification_processed = 0u;
+    cdin_backend_status dispatch_status;
     if (host == NULL || out_processed == NULL || !host->started) return CDIN_BACKEND_INVALID_ARGUMENT;
     if (!cdin_backend_is_owner(host->backend)) return CDIN_BACKEND_INVALID_STATE;
     *out_processed = 0u;
+    dispatch_status = cdin_lua_host_dispatch_frontend(host, max_events, &frontend_processed);
+    if (dispatch_status != CDIN_BACKEND_OK) return dispatch_status;
     L = host->state;
     base = lua_gettop(L);
     lua_rawgeti(L, LUA_REGISTRYINDEX, host->runtime_ref);
@@ -166,9 +181,10 @@ cdin_backend_status cdin_lua_host_pump(cdin_lua_host *host, size_t max_events, s
     }
     if (lua_isnumber(L, -2)) {
         lua_Integer count = lua_tointeger(L, -2);
-        if (count > 0) *out_processed = (size_t)count;
+        if (count > 0) notification_processed = (size_t)count;
     }
     lua_settop(L, base);
+    *out_processed = frontend_processed + notification_processed;
     return CDIN_BACKEND_OK;
 }
 

@@ -70,7 +70,10 @@ else ifeq ($(HOST_OS),Darwin)
 endif
 
 SERVICE_SRC := $(sort $(wildcard src/jobs/*.c) $(wildcard src/os/*.c) $(wildcard src/platform/*.c))
-BACKEND_SRC := src/backend.c src/core/status.c src/diagnostics/log.c $(sort $(wildcard src/kernel/*.c) $(wildcard src/protocol/*.c) $(wildcard src/runtime/*.c) $(wildcard src/session/*.c))
+PROTOCOL_SRC := src/protocol/codec.c
+PROTOCOL_OBJ := $(patsubst src/%.c,$(BUILD_DIR)/obj/protocol/%.o,$(PROTOCOL_SRC))
+PROTOCOL_LIB := $(BUILD_DIR)/libcdin_protocol.a
+BACKEND_SRC := src/backend.c src/core/status.c src/diagnostics/log.c $(sort $(wildcard src/kernel/*.c) $(filter-out src/protocol/codec.c,$(wildcard src/protocol/*.c)) $(wildcard src/runtime/*.c) $(wildcard src/session/*.c))
 SERVICE_OBJ := $(patsubst src/%.c,$(BUILD_DIR)/obj/services/%.o,$(SERVICE_SRC))
 BACKEND_OBJ := $(patsubst src/%.c,$(BUILD_DIR)/obj/backend/%.o,$(BACKEND_SRC))
 SERVICE_LIB := $(BUILD_DIR)/libcdin_backend_services.a
@@ -86,8 +89,8 @@ INTEGRATION_BIN := $(BUILD_DIR)/integration/backend_session
 INTEGRATION_KERNEL_BIN := $(BUILD_DIR)/integration/kernel_document_workflow
 EXAMPLE_BACKUP_BIN := $(BUILD_DIR)/examples/atomic-backup
 
-.PHONY: all services library require-kernel deps build e2e integration runtime-integration stress benchmark examples example-atomic-backup check test lint boundary info clean
-all: services library
+.PHONY: all services protocol protocol-test library require-kernel deps build e2e integration runtime-integration stress benchmark examples example-atomic-backup check test lint boundary info clean
+all: services protocol library
 build: all
 services: $(SERVICE_LIB)
 library: require-kernel $(BACKEND_LIB)
@@ -106,6 +109,26 @@ $(SERVICE_LIB): $(SERVICE_OBJ)
 	@mkdir -p $(@D)
 	$(AR) rcs $@ $^
 	$(RANLIB) $@
+
+$(PROTOCOL_LIB): $(PROTOCOL_OBJ)
+	@mkdir -p $(@D)
+	$(AR) rcs $@ $^
+	$(RANLIB) $@
+
+$(BUILD_DIR)/obj/protocol/%.o: src/%.c
+	@mkdir -p $(@D)
+	$(CC) $(BASE_CPPFLAGS) $(PLATFORM_CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
+
+protocol: $(PROTOCOL_LIB)
+
+protocol-test: $(PROTOCOL_SRC) tests/protocol/test_codec.c tests/headless/headless_frontend.c tests/protocol/test_server.c src/protocol/server.c src/core/status.c
+	@mkdir -p $(BUILD_DIR)/tests
+	$(CC) $(BASE_CPPFLAGS) $(CFLAGS) $(PROTOCOL_SRC) tests/protocol/test_codec.c -o $(BUILD_DIR)/tests/protocol_codec
+	$(BUILD_DIR)/tests/protocol_codec
+	$(CC) $(BASE_CPPFLAGS) $(CFLAGS) $(PROTOCOL_SRC) tests/headless/headless_frontend.c -o $(BUILD_DIR)/tests/protocol_headless
+	$(BUILD_DIR)/tests/protocol_headless
+	$(CC) $(BASE_CPPFLAGS) -Isrc $(CFLAGS) $(PROTOCOL_SRC) src/protocol/server.c src/core/status.c tests/protocol/test_server.c -o $(BUILD_DIR)/tests/protocol_server
+	$(BUILD_DIR)/tests/protocol_server
 
 $(BACKEND_LIB): $(BACKEND_OBJ)
 	@mkdir -p $(@D)
@@ -157,7 +180,7 @@ $(EXAMPLE_BACKUP_BIN): examples/atomic-backup/main.c $(SERVICE_LIB)
 example-atomic-backup: $(EXAMPLE_BACKUP_BIN)
 examples: example-atomic-backup
 
-e2e: $(E2E_JOB) $(E2E_ABORT) $(E2E_FS) $(E2E_PROCESS)
+e2e: protocol-test $(E2E_JOB) $(E2E_ABORT) $(E2E_FS) $(E2E_PROCESS)
 	$(E2E_JOB)
 	$(E2E_ABORT)
 	$(E2E_FS)
@@ -200,4 +223,4 @@ info:
 clean:
 	rm -rf $(BUILD_DIR)
 
--include $(SERVICE_OBJ:.o=.d) $(BACKEND_OBJ:.o=.d) $(SCENARIO_OBJ:.o=.d)
+-include $(SERVICE_OBJ:.o=.d) $(PROTOCOL_OBJ:.o=.d) $(BACKEND_OBJ:.o=.d) $(SCENARIO_OBJ:.o=.d)
