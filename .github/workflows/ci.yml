@@ -25,49 +25,81 @@ jobs:
 
   platform-smoke:
     name: ${{ matrix.os }} native build and Kernel integration
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-24.04
-            shell: bash
-          - os: macos-15
-            shell: bash
-          - os: windows-latest
-            shell: msys2
-    runs-on: ${{ matrix.os }}
+        os:
+          - ubuntu-24.04
+          - macos-15
     steps:
-      - uses: actions/checkout@v7
-      - if: matrix.os == 'ubuntu-24.04'
-        name: Install native build tools
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Install Linux build tools
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential cmake pkg-config curl
-      - if: matrix.os == 'macos-15'
-        name: Install native build tools
+
+      - name: Install macOS build tools
+        if: runner.os == 'macOS'
         run: brew install cmake pkg-config
-      - if: matrix.shell == 'msys2'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install Markdown linter
+        run: npm install --global markdownlint-cli2
+
+      - name: Install pinned Kernel package
+        run: bash scripts/install-deps.sh
+
+      - name: Strict build and tests
+        run: make check
+
+      - name: CMake build and CTest
+        run: |
+          cmake -S . -B build-cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-cmake --config Release --parallel
+          ctest --test-dir build-cmake -C Release --output-on-failure
+
+  platform-smoke-windows:
+    name: Windows UCRT64 native build and Kernel integration
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up MSYS2 UCRT64
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
           update: true
-          install: git mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-curl mingw-w64-ucrt-x86_64-unzip
-      - if: matrix.shell != 'msys2'
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-      - if: matrix.shell == 'msys2'
-        shell: msys2 {0}
-        run: pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-nodejs
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-make
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-curl
+            mingw-w64-ucrt-x86_64-unzip
+            mingw-w64-ucrt-x86_64-nodejs
+
       - name: Install Markdown linter
-        shell: ${{ matrix.shell == 'msys2' && 'msys2 {0}' || 'bash' }}
+        shell: msys2 {0}
         run: npm install --global markdownlint-cli2
+
       - name: Install pinned Kernel package
-        shell: ${{ matrix.shell == 'msys2' && 'msys2 {0}' || 'bash' }}
+        shell: msys2 {0}
         run: bash scripts/install-deps.sh
+
       - name: Strict build and tests
-        shell: ${{ matrix.shell == 'msys2' && 'msys2 {0}' || 'bash' }}
+        shell: msys2 {0}
         run: make check
+
       - name: CMake build and CTest
-        shell: ${{ matrix.shell == 'msys2' && 'msys2 {0}' || 'bash' }}
+        shell: msys2 {0}
         run: |
           cmake -S . -B build-cmake -DCMAKE_BUILD_TYPE=Release
           cmake --build build-cmake --config Release --parallel
