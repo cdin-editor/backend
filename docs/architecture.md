@@ -35,7 +35,20 @@ A generation-checked handle contains a slot number and a generation number. When
 
 ### `runtime/`
 
-`lua_host.c` owns only the bridge lifecycle: allocate the Lua state, load Runtime, pump it, and shut it down. The implementation is split into `lua_host_common.c` (error and value conversion), `lua_host_api.c` (host metadata, logging, and UI publication), `lua_host_documents.c` (document, snapshot, transaction, history, notification, and search calls), `lua_host_services.c` (filesystem, process, and clock calls), and `lua_host_register.c` (metatables and API registration). `lua_host_internal.h` shares private declarations; none of these Lua-specific details are part of the installed public C API. The bridge is optional at build time, but a Runtime-enabled application requires Lua 5.4. This mechanism remains a candidate under [OD-32 — Lua-to-native bridge behind the Runtime Host API](https://github.com/cdin-editor/spec/blob/main/docs/adr/open-decisions.md#od-32); LuaJIT FFI and MetaCall remain alternatives in the Spec.
+`lua_host.c` owns only the bridge lifecycle: allocate the Lua state, load
+Runtime, pump it, and shut it down. The implementation is split into
+`lua_host_common.c` (error and value conversion),
+`lua_host_api.c` (host metadata, logging, and UI publication),
+`lua_host_documents.c` (document, snapshot, transaction, history,
+notification, and search calls),
+`lua_host_services.c` (filesystem, process, and clock calls), and
+`lua_host_register.c` (metatables and API registration).
+`lua_host_internal.h` shares private declarations; none of these Lua-specific
+details are part of the installed public C API. The bridge is optional at
+build time, but a Runtime-enabled application requires Lua 5.4. This
+mechanism remains a candidate under
+[OD-32 — Lua-to-native bridge behind the Runtime Host API](https://github.com/cdin-editor/spec/blob/main/docs/adr/open-decisions.md#od-32);
+LuaJIT FFI and MetaCall remain alternatives in the Spec.
 
 Lua is owned by the Backend's creating thread. Worker threads never enter Lua, call Lua callbacks, or touch Lua userdata.
 
