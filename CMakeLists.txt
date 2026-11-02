@@ -44,6 +44,12 @@ endif()
 # modules and is never exposed through public include/cdin headers.
 set(PKG_CONFIG_ARGN "--static")
 pkg_check_modules(CDIN_KERNEL REQUIRED IMPORTED_TARGET "cdin-kernel>=${CDIN_KERNEL_MIN_VERSION}")
+pkg_get_variable(CDIN_KERNEL_LIBDIR cdin-kernel libdir)
+if(NOT CDIN_KERNEL_LIBDIR)
+    message(FATAL_ERROR "cdin-kernel.pc did not provide its library directory")
+endif()
+get_filename_component(CDIN_KERNEL_PREFIX "${CDIN_KERNEL_LIBDIR}" DIRECTORY)
+set(CDIN_KERNEL_BINDIR "${CDIN_KERNEL_PREFIX}/bin")
 add_library(cdin_backend STATIC
     src/backend.c
     src/core/status.c
@@ -156,6 +162,11 @@ if(BUILD_TESTING)
         target_compile_features(cdin_backend_integration_session PRIVATE c_std_11)
         target_compile_options(cdin_backend_integration_session PRIVATE
             $<$<C_COMPILER_ID:GNU,Clang>:-Wall;-Wextra;-Wshadow;-Wconversion;-Wstrict-prototypes;-Wformat=2;-Wpedantic;-Werror>)
+        # pkg-config selects the shared library when both .so/.dylib and .a
+        # files are installed. Give the test executable a build-tree RPATH so
+        # the OS loader can resolve the pinned Kernel without global settings.
+        set_target_properties(cdin_backend_integration_session PROPERTIES
+            BUILD_RPATH "${CDIN_KERNEL_LIBDIR}")
         add_test(NAME backend_integration_session COMMAND cdin_backend_integration_session)
 
         add_executable(cdin_backend_integration_kernel_document tests/integration/kernel_document_workflow.c)

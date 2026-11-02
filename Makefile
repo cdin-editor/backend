@@ -151,8 +151,8 @@ e2e: $(E2E_JOB) $(E2E_ABORT) $(E2E_FS) $(E2E_PROCESS)
 	$(E2E_PROCESS) "$(abspath $(CHILD_BIN))"
 
 integration: $(INTEGRATION_BIN) $(INTEGRATION_KERNEL_BIN)
-	$(INTEGRATION_BIN)
-	$(INTEGRATION_KERNEL_BIN)
+	bash scripts/run-with-kernel-libs.sh "$(INTEGRATION_BIN)"
+	bash scripts/run-with-kernel-libs.sh "$(INTEGRATION_KERNEL_BIN)"
 
 test: e2e integration
 
@@ -162,7 +162,12 @@ lint:
 boundary:
 	bash scripts/check-boundaries.sh
 
-check: e2e library integration lint boundary
+# `check` is an orchestration target, not a collection of prerequisites.
+# The Kernel package must be installed before Make evaluates pkg-config flags.
+# ci-check.sh deliberately uses a fresh Make process after installing it.
+check:
+	bash scripts/ci-check.sh
+	$(MAKE) lint
 	@if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git diff --check; else echo "Git worktree not initialized; whitespace diff check skipped"; fi
 
 info:

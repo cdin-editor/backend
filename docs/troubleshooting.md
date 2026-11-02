@@ -2,6 +2,49 @@
 
 Use this page when the Backend does not start or a Host call returns an error.
 
+## Build and CI runner errors
+
+### `libcdin_kernel.so.1` cannot be opened when an integration test starts
+
+The test executable linked successfully, but the operating-system loader cannot
+find the shared Kernel library at runtime. The Backend package intentionally
+uses the Kernel release library instead of copying Kernel source into this
+repository. Run integration executables through
+`scripts/run-with-kernel-libs.sh`; the Make integration target already does
+this. CMake integration executables receive a build-tree RPATH on Linux and
+macOS, and the Windows build copies the Kernel DLLs beside each test executable.
+
+### `cdin-kernel >= 1.2.1 is not installed or not visible to pkg-config`
+
+Install the pinned binary package before building the Kernel-hosting library:
+
+```sh
+bash scripts/install-deps.sh
+make all integration
+```
+
+`make check` runs `scripts/ci-check.sh`, which first runs the Kernel-independent
+E2E scenarios, installs the pinned package, and then starts a fresh Make process.
+The fresh process is important because Make evaluates `pkg-config` flags while
+reading the Makefile.
+
+For an existing compatible installation, set `KERNEL_PREFIX` to its package
+prefix. `CDIN_SKIP_DEP_INSTALL=1` is intended only for controlled offline tests
+where that prefix has already been verified.
+
+### `make: command not found` in Windows UCRT64
+
+The UCRT64 package `mingw-w64-ucrt-x86_64-make` provides `mingw32-make`, not the
+MSYS `make` command used by the repository's nested scripts. The Windows CI
+runner installs the MSYS `make` package as well as the UCRT64 compiler and
+linker tools. Run the project commands from the `msys2 {0}` shell.
+
+### Markdownlint reports `MD013/line-length`
+
+The repository permits prose lines up to 500 characters. Split long technical
+paragraphs into shorter sentences or bullets rather than raising the limit.
+Long table rows are intentionally allowed by the Markdownlint configuration.
+
 ## Kernel and ABI errors
 
 ### `VERSION_MISMATCH`
