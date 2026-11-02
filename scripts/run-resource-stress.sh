@@ -8,25 +8,41 @@ cc_bin="${CC:-cc}"
 build_dir="${BUILD_DIR:-$repo_root/build/stress}"
 mkdir -p "$build_dir"
 
-read -r -a extra_cflags <<< "${EXTRA_CFLAGS:-}"
-read -r -a extra_ldflags <<< "${EXTRA_LDFLAGS:-}"
-platform_cflags=()
+# Build the command incrementally. macOS ships Bash 3.2, where expanding an
+# empty array under `set -u` can fail with "unbound variable". Never expand
+# optional arrays unless their source string contains at least one word.
+cmd=("$cc_bin")
 case "${OSTYPE:-unknown}" in
   msys*|cygwin*|win32*) ;;
-  *) platform_cflags+=("-D_POSIX_C_SOURCE=200809L") ;;
+  *) cmd+=("-D_POSIX_C_SOURCE=200809L") ;;
 esac
 
-"$cc_bin" \
-  "${platform_cflags[@]}" \
-  -std=c11 -O2 -g -Wall -Wextra -Wshadow -Wconversion -Wstrict-prototypes \
-  -Wformat=2 -Wpedantic -Werror \
-  "${extra_cflags[@]}" \
-  -Iinclude -Isrc \
-  tests/stress/resource_stress.c \
-  src/jobs/pool.c src/jobs/public.c src/platform/thread.c \
-  -o "$build_dir/resource_stress" \
-  "${extra_ldflags[@]}" \
-  ${THREAD_LIBS:--pthread} \
-  ${MEMORY_LIBS:-}
+cmd+=(
+  -std=c11 -O2 -g -Wall -Wextra -Wshadow -Wconversion -Wstrict-prototypes
+  -Wformat=2 -Wpedantic -Werror
+)
 
+append_words() {
+  local value="$1"
+  local -a parsed
+
+  # Bash 3.2-compatible guard: read and expand only non-empty word lists.
+  if [[ "$value" =~ [^[:space:]] ]]; then
+    read -r -a parsed <<< "$value"
+    cmd+=("${parsed[@]}")
+  fi
+}
+
+append_words "${EXTRA_CFLAGS:-}"
+cmd+=(
+  -Iinclude -Isrc
+  tests/stress/resource_stress.c
+  src/jobs/pool.c src/jobs/public.c src/platform/thread.c
+  -o "$build_dir/resource_stress"
+)
+append_words "${EXTRA_LDFLAGS:-}"
+append_words "${THREAD_LIBS:--pthread}"
+append_words "${MEMORY_LIBS:-}"
+
+"${cmd[@]}"
 "$build_dir/resource_stress" "$@"

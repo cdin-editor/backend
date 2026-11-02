@@ -13,6 +13,10 @@ jobs:
   runtime-integration:
     name: Backend + Lua 5.4 + production Runtime
     runs-on: ubuntu-24.04
+    env:
+      # Keep the package prefix consistent between the installer and every
+      # subsequent Make/pkg-config invocation in this job.
+      KERNEL_PREFIX: ${{ github.workspace }}/.deps/kernel
     steps:
       - uses: actions/checkout@v7
       - name: Check out the pinned Runtime source
@@ -27,7 +31,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes build-essential pkg-config liblua5.4-dev
       - name: Install the pinned Kernel package
-        run: bash scripts/install-deps.sh
+        run: |
+          bash scripts/install-deps.sh --prefix "$KERNEL_PREFIX"
+          echo "PKG_CONFIG_PATH=$KERNEL_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+      - name: Verify Kernel pkg-config visibility
+        run: |
+          test -f "$KERNEL_PREFIX/lib/pkgconfig/cdin-kernel.pc"
+          printf 'KERNEL_PREFIX=%s\n' "$KERNEL_PREFIX"
+          printf 'PKG_CONFIG_PATH=%s\n' "$PKG_CONFIG_PATH"
+          test "$(pkg-config --modversion cdin-kernel)" = "1.2.1"
+          pkg-config --atleast-version=1.2.1 cdin-kernel
+          pkg-config --static --libs cdin-kernel
       - name: Build Backend with Lua enabled
         run: make clean && make WITH_LUA=1 all
       - name: Run Backend / Kernel integration scenarios

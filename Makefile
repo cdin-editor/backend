@@ -20,22 +20,34 @@ BASE_CPPFLAGS := -Iinclude -Isrc
 # pkg-config is used only by the Backend/Kernel integration library. The
 # services archive is intentionally buildable without Kernel installed.
 ifneq ($(findstring MINGW,$(HOST_OS)),)
-  export PKG_CONFIG_PATH := $(shell cygpath -m "$(KERNEL_PREFIX)/lib/pkgconfig")
+  KERNEL_PKG_CONFIG_DIR := $(shell cygpath -m "$(KERNEL_PREFIX)/lib/pkgconfig")
+  KERNEL_PKG_CONFIG_WINDOWS_PATH := yes
   THREAD_LIBS :=
 else ifneq ($(findstring MSYS,$(HOST_OS)),)
-  export PKG_CONFIG_PATH := $(shell cygpath -m "$(KERNEL_PREFIX)/lib/pkgconfig")
+  KERNEL_PKG_CONFIG_DIR := $(shell cygpath -m "$(KERNEL_PREFIX)/lib/pkgconfig")
+  KERNEL_PKG_CONFIG_WINDOWS_PATH := yes
   THREAD_LIBS :=
 else ifneq ($(findstring CYGWIN,$(HOST_OS)),)
-  export PKG_CONFIG_PATH := $(shell cygpath -m "$(KERNEL_PREFIX)/lib/pkgconfig")
+  KERNEL_PKG_CONFIG_DIR := $(shell cygpath -m "$(KERNEL_PREFIX)/lib/pkgconfig")
+  KERNEL_PKG_CONFIG_WINDOWS_PATH := yes
   THREAD_LIBS :=
 else
-  export PKG_CONFIG_PATH := $(KERNEL_PREFIX)/lib/pkgconfig$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
+  KERNEL_PKG_CONFIG_DIR := $(KERNEL_PREFIX)/lib/pkgconfig
   THREAD_LIBS := -pthread
 endif
 
-KERNEL_PKG_OK := $(shell $(PKG_CONFIG) --atleast-version=$(KERNEL_MIN_VERSION) cdin-kernel >/dev/null 2>&1 && echo yes)
-KERNEL_CFLAGS := $(shell $(PKG_CONFIG) --cflags cdin-kernel 2>/dev/null)
-KERNEL_LIBS := $(shell $(PKG_CONFIG) --static --libs cdin-kernel 2>/dev/null)
+ifeq ($(KERNEL_PKG_CONFIG_WINDOWS_PATH),yes)
+  KERNEL_PKG_CONFIG_PATH := $(KERNEL_PKG_CONFIG_DIR)
+else
+  KERNEL_PKG_CONFIG_PATH := $(KERNEL_PKG_CONFIG_DIR)$(if $(strip $(PKG_CONFIG_PATH)),:$(PKG_CONFIG_PATH))
+endif
+export PKG_CONFIG_PATH := $(KERNEL_PKG_CONFIG_PATH)
+
+# Pass the package search path explicitly to make's parse-time shell calls.
+# This avoids depending on how a caller exported PKG_CONFIG_PATH between steps.
+KERNEL_PKG_OK := $(shell PKG_CONFIG_PATH="$(KERNEL_PKG_CONFIG_PATH)" $(PKG_CONFIG) --atleast-version=$(KERNEL_MIN_VERSION) cdin-kernel >/dev/null 2>&1 && echo yes)
+KERNEL_CFLAGS := $(shell PKG_CONFIG_PATH="$(KERNEL_PKG_CONFIG_PATH)" $(PKG_CONFIG) --cflags cdin-kernel 2>/dev/null)
+KERNEL_LIBS := $(shell PKG_CONFIG_PATH="$(KERNEL_PKG_CONFIG_PATH)" $(PKG_CONFIG) --static --libs cdin-kernel 2>/dev/null)
 
 LUA_AVAILABLE := $(shell $(PKG_CONFIG) --exists $(LUA_PKG) 2>/dev/null && echo yes)
 ifeq ($(WITH_LUA),1)
