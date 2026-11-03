@@ -161,7 +161,7 @@ zero-based byte offsets, not grapheme columns or pixels.
 
 ## 6. Runtime and Host API prerequisites
 
-Backend reports Host API `0.3.0`, Kernel ABI `1.1.x` and Frontend Protocol
+Backend reports Host API `1.0.0`, Kernel ABI `1.1.x` and Frontend Protocol
 `1.0.0`. Runtime must use the companion integration patch in
 `runtime-patch/apply_runtime_integration.py` to advertise these versions,
 require the `document_lines` feature and implement `read_lines()`,

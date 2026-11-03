@@ -38,7 +38,7 @@ Inbound `cdin_backend_frontend_receive()` performs frame/schema/direction/sequen
 
 The Backend Protocol/Runtime bridge source is implemented in this local source snapshot, but the following must still happen before production Frontend use:
 
-1. Apply and review `integration/runtime-patch/apply_runtime_integration.py` in a `cdin-editor/runtime` checkout. That patch aligns Runtime Host API `0.3.0` and Protocol `1.0.0`, adds `document_lines`, `read_lines()`, UI-model style/version fields, event dispatch and FakeHost/integration tests. The public Runtime repository was inspected read-only and was not changed or pushed.
+1. Apply and review `integration/runtime-patch/apply_runtime_integration.py` in a `cdin-editor/runtime` checkout. That patch aligns Runtime Host API `1.0.0` and Protocol `1.0.0`, adds `document_lines`, `read_lines()`, UI-model style/version fields, event dispatch and FakeHost/integration tests. The public Runtime repository was inspected read-only and was not changed or pushed.
 2. Build against real PUC Lua 5.4 development files and the installed `cdin-kernel` package, then run the real Runtime + Kernel integration suite. The required development dependencies are unavailable in this workspace.
 3. Implement concrete Unix Domain Socket and Windows Named Pipe transports if the Frontend is a separate process. The codec's partial-I/O callbacks do not themselves open a transport.
 4. Run the current-commit Linux/macOS/Windows matrix and live two-client GUI/headless conformance tests.

@@ -1,21 +1,29 @@
-# Runtime Host API 0.3.0
+# Runtime Host API 1.0.0
 
 Runtime does not call the Kernel directly. It calls a table named `host`, which
 the Backend creates. This page documents the Host services implemented by this
 Backend source snapshot.
 
-Backend reports Host API `0.3.0`, Kernel ABI `1.1.x` and Frontend Protocol
-`0.2.0`. Host API `0.x` is provisional: Runtime must require the exact major
-and minor version. The Runtime repository's inspected `main` source still
-requires `0.2.x`; apply the companion Runtime integration patch before live
-startup. Never disable or weaken the version guard to hide a mismatch.
+Backend reports Host API `1.0.0`, Kernel ABI `1.1.x` and Frontend Protocol
+`1.0.0`. Host API `1.x` is stable and uses same-major, minimum-minor compatibility;
+additive minor versions are accepted. Frontend Protocol `1.x` is a separate
+stable contract and uses its own same-major, minimum-minor compatibility rule. The paired Runtime `1.0.0-rc.1` source in this delivery advertises
+Protocol `1.0.0`; never disable or weaken either version guard to hide a mismatch.
 
 ## 1. Host descriptor
+
+Host API `1.0.0` freezes the Lua method shapes, ownership/lifetime rules,
+thread-affinity requirements, required capabilities and stable error identities
+documented here and in the paired Runtime contract. Compatible `1.x` minor
+versions may add optional methods, fields and capabilities only. Existing
+method meanings and required behavior cannot change within major version 1.
+Backend is the authoritative descriptor provider; Runtime validates it at
+startup. Kernel ABI and Frontend Protocol remain independent version axes.
 
 `host:info()` reports the ABI/version actually detected from the Kernel and the
 capabilities exposed by Backend. In addition to the established document,
 notification, snapshot, transaction, batch, search, UI and logging features,
-Host API `0.3.0` reports:
+Host API `1.0.0` reports:
 
 - `document_lines = true`: bounded version-pinned byte line-window reads;
 - `frontend_events = true|false`: true only when the in-process Protocol server

@@ -46,10 +46,10 @@ This repository contains Backend library version 1.0.0, the shared Frontend Prot
 codec/server, reusable OS/job services, Kernel adapter, PUC Lua 5.4 bridge,
 Runtime UI-model projection, owner-thread inbound event dispatcher,
 version-pinned line-read service, Headless Frontend harness and integration
-workflows. It is **not yet a complete runnable CDIN editor**: the inspected
-Runtime main branch still needs the matching Host API 0.3.0 patch, no concrete
-Unix Socket/Windows Named Pipe transport is included, and live Lua + Kernel +
-Frontend integration and the complete native OS matrix remain release gates.
+workflows. It is **not yet a complete runnable CDIN editor**: the paired Runtime 1.0.0-rc.1
+source now advertises the required Frontend Protocol 1.0.0, but live Lua +
+Kernel integration, concrete Unix Socket/Windows Named Pipe transport, and the
+complete native OS matrix remain release gates.
 
 The [CDIN specification](https://github.com/cdin-editor/spec) is the source of
 truth for cross-project contracts. This README describes the current state of

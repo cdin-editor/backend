@@ -19,7 +19,7 @@ Implemented in the Backend source:
 Still missing or externally gated:
 
 - no TCP/Unix-domain socket, Windows Named Pipe or terminal-stream adapter;
-- the inspected Runtime `main` branch has not yet received the companion Host API 0.3.0 / Protocol 1.0.0 patch, and is incompatible with the Backend's current descriptor;
+- Live Backend/Kernel startup has not yet been run against the paired Runtime 1.0.0-rc.1 source (the Runtime Lua unit and simulated-Host integration suites pass);
 - no real Lua 5.4 + installed Kernel live UI/event/line-read integration result in this workspace;
 - no production Frontend toolkit/application; Headless Frontend is a test harness;
 - optional clipboard/dialog capabilities are not advertised (accepted capability set is empty).
@@ -28,7 +28,7 @@ See [Frontend Protocol implementation status](frontend-protocol.md) for the exac
 
 ## 2. Runtime and Kernel integration
 
-Backend 1.0.0 reports Host API `0.3.0` and Frontend Protocol `1.0.0`. The read-only inspection of `cdin-editor/runtime` `main` found Host API `0.2.0`, Frontend Protocol `0.1.0`, no `documents.read_lines`, and no complete Frontend event dispatcher. The file `integration/runtime-patch/apply_runtime_integration.py` is a fail-closed local patcher for a Runtime checkout. It is not a claim that the public Runtime repository was modified or that the patch has been tested against a full Runtime checkout in this environment.
+Backend 1.0.0 reports Host API `1.0.0` and Frontend Protocol `1.0.0`. The paired Runtime 1.0.0-rc.1 source advertises the same Protocol and implements the matching `documents.read_lines` and Frontend event paths. Its Lua 5.4.7 unit and simulated-Host integration suites pass (137 / 131 assertions). The public GitHub Runtime repository was not modified. Live Backend + Lua C bridge + Kernel integration remains unverified in this environment.
 
 Kernel public header declares ABI `1.1.0` and package version `1.2.1`; Backend consumes it only through the existing public-header adapter. No Kernel ABI change is included.
 
@@ -42,4 +42,4 @@ Only the available Linux environment was built and tested in this workspace. mac
 
 ## 4. ABI and release status
 
-Backend source/API and Frontend Protocol are versioned `1.0.0` in this package. The complete product integration remains gated: apply and test the Runtime Host API `0.3.0` / Protocol `1.0.0` patch, pass real Lua + Kernel tests, implement and test the selected transport, obtain the platform matrix, and verify the production logger dependency before claiming a production-ready CDIN editor.
+Backend source/API and Frontend Protocol are versioned `1.0.0` in this package. The paired Runtime package is `0.4.1`, Host API `1.0.0`, Protocol `1.0.0`. Complete product integration remains gated: pass real Lua + Kernel tests, implement and test the selected transport, obtain the platform matrix, and verify production dependencies before claiming a production-ready CDIN editor.

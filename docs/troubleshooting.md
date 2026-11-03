@@ -10,7 +10,7 @@ Backend requires Kernel ABI major version `1` and minor version `1` or newer. Ch
 
 ### `UNSUPPORTED` during Backend creation
 
-Backend requires Kernel batch edits, transactions, snapshots, notifications, literal search, and byte search. A Kernel library without one of these features cannot satisfy Runtime Host API `0.3.0` in this Backend snapshot (the inspected Runtime currently requires `0.2.0`, so align the pair before integration).
+Backend requires Kernel batch edits, transactions, snapshots, notifications, literal search, and byte search. A Kernel library without one of these features cannot satisfy Runtime Host API `1.0.0` in this Backend snapshot (the paired Runtime release reports Host API `1.0.0` and Protocol `1.0.0`).
 
 ### `INVALID_HANDLE`
 

@@ -16,7 +16,7 @@
 
 ### Changed
 
-- Update the companion Runtime integration patch to advertise Frontend Protocol `1.0.0`; Runtime Host API remains `0.3.0`.
+- Update the companion Runtime integration patch to advertise Frontend Protocol `1.0.0`; Runtime Host API is `1.0.0`.
 - Preserve the Backend's explicit empty optional-capability set; no clipboard/dialog capability is advertised by this build.
 
 ### Verification limits

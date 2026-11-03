@@ -36,6 +36,61 @@ def load(root: Path, relative: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def verify_integrated_runtime(root: Path) -> bool:
+    """Recognize the already-integrated Runtime source without rewriting it.
+
+    The Backend patcher historically targeted the pre-integration 0.2.0/0.1.0
+    Runtime snapshot. Current Runtime archives already contain the same bridge
+    work. Treat a complete implementation as a verified no-op; reject partial
+    integration rather than trying to layer old textual patches over new code.
+
+    Spec: RT-004, RT-006, RT-010, RT-012; ADR-0018 and ADR-0019.
+    """
+    checks = {
+        "lua/cdin/runtime/core/version.lua": (
+            "host_api = { major = 0, minor = 3, patch = 0 },",
+            "frontend_protocol = { major = 1, minor = 0, patch = 0 },",
+        ),
+        "lua/cdin/runtime/host/contract.lua": (
+            '"document_lines"',
+            'features.frontend_events',
+            'require_compatible(\n    parse_version(info.frontend_protocol',
+        ),
+        "lua/cdin/runtime/document/client.lua": (
+            "function Client:read_lines(",
+            "function Client:refresh_metadata(",
+        ),
+        "lua/cdin/runtime/application.lua": (
+            "function Runtime:read_view_lines(",
+            "function Runtime:handle_frontend_event(",
+        ),
+        "tests/support/fake_host.lua": (
+            "host_api = options.host_api or { major = 0, minor = 3, patch = 0 },",
+            "frontend_protocol = options.frontend_protocol or { major = 1, minor = 0, patch = 0 },",
+        ),
+        "tests/integration/run.lua": (
+            "frontend_protocol = { major = 1, minor = 1, patch = 0 }",
+            "frontend_protocol = { major = 2, minor = 0, patch = 0 }",
+            "read_lines",
+        ),
+    }
+    present = 0
+    total = sum(len(markers) for markers in checks.values())
+    for relative, markers in checks.items():
+        content = load(root, relative)
+        for marker in markers:
+            if marker in content:
+                present += 1
+    if present == total:
+        return True
+    if present:
+        raise PatchError(
+            f"Runtime contains a partial/newer integration ({present}/{total} markers); "
+            "refusing to apply the legacy patcher. Reconcile the Runtime source manually."
+        )
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime-root", required=True, type=Path,
@@ -50,6 +105,14 @@ def main() -> int:
 
     changed: dict[str, str] = {}
     try:
+        if verify_integrated_runtime(root):
+            print("Runtime already contains the complete Backend integration:")
+            print("  Host API 0.3.0 / Frontend Protocol 1.0.0")
+            print("  bounded document line reads / owner-thread Frontend event dispatch")
+            print("  stable Protocol minor compatibility / matching FakeHost tests")
+            print("No patch is required; no files were written.")
+            return 0
+
         # 1. Pin the Host API and Frontend Protocol versions as one boundary change.
         path = "lua/cdin/runtime/core/version.lua"
         text = load(root, path)
@@ -59,7 +122,7 @@ def main() -> int:
             "Runtime Host API version")
         text = replace_once(text,
             "frontend_protocol = { major = 0, minor = 1, patch = 0 },",
-            "frontend_protocol = { major = 0, minor = 2, patch = 0 },",
+            "frontend_protocol = { major = 1, minor = 0, patch = 0 },",
             "Frontend Protocol version")
         text = replace_once(text,
             "-- Host API 0.2 adds the Kernel-backed logging descriptor (`info.logging`).",
@@ -90,7 +153,11 @@ def main() -> int:
             'Backend advertised regex under Kernel ABI 1.1.0, where it is unsupported')
         text = text.replace(
             'The Frontend Protocol is still provisional. Backend negotiates transport;',
-            'Frontend Protocol 0.2 adds model projection and inbound event contracts. Backend negotiates transport;')
+            'Frontend Protocol 1.0.0 is stable. Backend negotiates transport and capabilities;')
+        text = replace_once(text,
+            '  require_provisional_match(\n    parse_version(info.frontend_protocol, "frontend_protocol"),\n    version.frontend_protocol,\n    "Frontend Protocol"\n  )',
+            '  require_compatible(\n    parse_version(info.frontend_protocol, "frontend_protocol"),\n    version.frontend_protocol,\n    "Frontend Protocol"\n  )',
+            "stable Frontend Protocol compatibility")
         changed[path] = text
 
         # 3. Add a bounded, version-pinned line-window method to the document client.
@@ -218,7 +285,7 @@ end
             "FakeHost Host API version")
         text = replace_once(text,
             'frontend_protocol = options.frontend_protocol or { major = 0, minor = 1, patch = 0 },',
-            'frontend_protocol = options.frontend_protocol or { major = 0, minor = 2, patch = 0 },',
+            'frontend_protocol = options.frontend_protocol or { major = 1, minor = 0, patch = 0 },',
             "FakeHost Frontend Protocol version")
         text = replace_once(text,
             'features = options.features or { documents = true, notifications = true, snapshots = true, transactions = true, batch_edits = true, literal_search = true, ui_model = true, logging = true },',
@@ -546,10 +613,18 @@ runtime:close_document(event_document.id)
             'host_api = { major = 0, minor = 3, patch = 0 }',
             'host_api = { major = 0, minor = 2, patch = 0 }',
             "old Host API rejection test")
-        text = replace_once(text,
-            'frontend_protocol = { major = 1, minor = 0, patch = 0 }',
-            'frontend_protocol = { major = 0, minor = 2, patch = 0 }',
-            "old Frontend Protocol rejection test")
+        # The existing 0.2.0 negative case remains the legacy-protocol rejection test.
+        text = insert_before(text,
+            'local incomplete_host = FakeHost.new(); incomplete_host.documents.read = nil',
+            'local newer_protocol = Runtime.new({ host = FakeHost.new({\n'
+            '  frontend_protocol = { major = 1, minor = 1, patch = 0 },\n'
+            '}) })\nnewer_protocol:start()\nA.equal(newer_protocol.state, "running")\n'
+            'A.truthy(newer_protocol:shutdown())\n'
+            'A.error_code(function()\n'
+            '  local bad = Runtime.new({ host = FakeHost.new({\n'
+            '    frontend_protocol = { major = 2, minor = 0, patch = 0 },\n'
+            '  }) })\n  bad:start()\nend, "HOST_API_MISMATCH")\n',
+            "stable Frontend Protocol compatibility tests")
         text = replace_once(text,
             'local incomplete_host = FakeHost.new(); incomplete_host.documents.read = nil',
             'local incomplete_host = FakeHost.new(); incomplete_host.documents.read_lines = nil',
@@ -577,7 +652,7 @@ runtime:close_document(event_document.id)
             "Host API descriptor version")
         text = replace_once(text,
             '  frontend_protocol = { major = 0, minor = 1, patch = 0 },',
-            '  frontend_protocol = { major = 0, minor = 2, patch = 0 },',
+            '  frontend_protocol = { major = 1, minor = 0, patch = 0 },',
             "Frontend Protocol descriptor version")
         text = replace_once(text,
             '    ui_model = true, logging = true,',

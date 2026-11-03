@@ -17,7 +17,7 @@ Frontend Foundation Core API 1.0.0 had previously shipped with a Protocol 0.2.0 
 4. The Backend validator requires `ui.options.options`, validates defined option types/ranges and accepts nullable leaf `active_view`. The Backend Lua projector serializes the model's required options map and emits CBOR null when a leaf has no active view.
 5. The Frontend validator implements the same `ui.options` and PaneTree rules. Its session negotiates exact major/minor `1.0`. Both peers must reject malformed required fields and must not silently fall back to Protocol 0.2.0.
 6. The Backend currently advertises no optional capabilities. Frontend may maintain the central registry but requests only capabilities an adapter supports and uses only those acknowledged by the Backend.
-7. Runtime Host API remains independently versioned at `0.3.0`. The companion Runtime integration patch must advertise Protocol `1.0.0`; until it is applied and tested against a real Runtime checkout, end-to-end Runtime integration is not claimed.
+7. Runtime Host API is independently versioned at `1.0.0`. The companion Runtime integration patch must advertise Protocol `1.0.0`; until it is applied and tested against a real Runtime checkout, end-to-end Runtime integration is not claimed.
 8. This version freeze does not declare GUI-SDL, production TUI, Headless, concrete OS transport, or the complete CDIN application complete.
 
 ## Required conformance rules
