@@ -234,6 +234,8 @@ static int test_running_session_and_protocol(log_capture *logs)
     if (cdin_protocol_encode_frame(&input_view, frame, sizeof(frame), &frame_length, sizeof(frame)) != CDIN_PROTOCOL_OK) goto fail;
     if (cdin_backend_frontend_receive(observer, frame, frame_length) != CDIN_BACKEND_PERMISSION_DENIED) goto fail;
     input_view.type = CDIN_PROTOCOL_INPUT_PASTE;
+    input_view.payload = paste_payload;
+    input_view.payload_length = sizeof(paste_payload);
     if (cdin_protocol_encode_frame(&input_view, frame, sizeof(frame), &frame_length, sizeof(frame)) != CDIN_PROTOCOL_OK) goto fail;
     if (cdin_backend_frontend_receive(driver, frame, frame_length) != CDIN_BACKEND_OK) goto fail;
     if (cdin_backend_frontend_pending_events(driver) != 1u) goto fail;
