@@ -502,7 +502,7 @@ static int get_view_selection(lua_State *L, int view, uint64_t *anchor, uint64_t
     return ok;
 }
 
-static int build_view_message(lua_State *L, const char *view_id, size_t view_id_length,
+static int build_view_message(const char *view_id, size_t view_id_length,
                               uint64_t version, uint64_t document_length,
                               uint64_t anchor, uint64_t caret, uint64_t scroll_anchor,
                               ui_message *messages, size_t capacity, size_t *count,
@@ -783,7 +783,7 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
         lua_pop(L, 1);
         if (visible != 0u) {
             if (!get_view_selection(L, -1, &anchor, &caret) ||
-                !build_view_message(L, view_keys[index].value, view_keys[index].length,
+                !build_view_message(view_keys[index].value, view_keys[index].length,
                                     view_version, document_length, anchor, caret, scroll_anchor,
                                     messages, capacity, &message_count, limit)) {
                 lua_pop(L, 1); status = CDIN_BACKEND_INVALID_ARGUMENT; goto done;
