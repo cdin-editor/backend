@@ -38,7 +38,7 @@ read -r -a thread_libs <<< "${THREAD_LIBS:--pthread}"
   -Wstrict-prototypes -Wformat=2 -Wpedantic -Werror \
   -Iinclude -Isrc "${cflags[@]}" \
   tests/integration/runtime_host_smoke.c \
-  build/libcdin_backend.a build/libcdin_backend_services.a \
+  build/libcdin_backend.a build/libcdin_backend_services.a build/libcdin_protocol.a \
   "${kernel_libs[@]}" "${lua_libs[@]}" "${thread_libs[@]}" \
   -o build/integration/runtime_host_smoke
 

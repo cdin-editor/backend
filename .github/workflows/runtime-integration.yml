@@ -29,7 +29,12 @@ jobs:
       - name: Install Lua 5.4 and native build tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential pkg-config liblua5.4-dev
+          sudo apt-get install --yes build-essential pkg-config lua5.4 liblua5.4-dev
+      - name: Apply Backend-compatible Runtime integration
+        run: python3 integration/runtime-patch/apply_runtime_integration.py --runtime-root runtime
+      - name: Verify patched Runtime tests and boundaries
+        working-directory: runtime
+        run: make test boundary
       - name: Install the pinned Kernel package
         run: |
           bash scripts/install-deps.sh --prefix "$KERNEL_PREFIX"
@@ -37,8 +42,8 @@ jobs:
       - name: Verify Kernel pkg-config visibility
         run: |
           test -f "$KERNEL_PREFIX/lib/pkgconfig/cdin-kernel.pc"
-          printf 'KERNEL_PREFIX=%s\n' "$KERNEL_PREFIX"
-          printf 'PKG_CONFIG_PATH=%s\n' "$PKG_CONFIG_PATH"
+          printf 'KERNEL_PREFIX=%s\\n' "$KERNEL_PREFIX"
+          printf 'PKG_CONFIG_PATH=%s\\n' "$PKG_CONFIG_PATH"
           test "$(pkg-config --modversion cdin-kernel)" = "1.2.1"
           pkg-config --atleast-version=1.2.1 cdin-kernel
           pkg-config --static --libs cdin-kernel
