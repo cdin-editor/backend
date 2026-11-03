@@ -162,14 +162,13 @@ zero-based byte offsets, not grapheme columns or pixels.
 ## 6. Runtime and Host API prerequisites
 
 Backend reports Host API `0.3.0`, Kernel ABI `1.1.x` and Frontend Protocol
-`0.2.0`. Runtime must use the companion integration patch in
-`runtime-patch/apply_runtime_integration.py` to advertise these versions,
-require the `document_lines` feature and implement `read_lines()`,
-`read_view_lines()` and `handle_frontend_event()`.
-
-The public `cdin-editor/runtime` repository was inspected read-only and was not
-modified or pushed by this delivery. Do not run this Backend against the old
-Runtime `0.2.x` source: the exact provisional version guard must reject it.
+`0.2.0`. The aligned Runtime provides the matching descriptor, requires the
+`document_lines` service, and implements `DocumentClient:read_lines()`,
+`Runtime:read_view_lines()` and `Runtime:handle_frontend_event()`.
+The Backend's `runtime-integration.yml` checks out Runtime `main`, runs its
+unit/integration/boundary suite, then builds the production Lua 5.4 + Kernel
+bridge and executes the live Protocol smoke scenario. Merge the Runtime update
+before merging Backend changes that consume it.
 
 ## 7. Current integration boundary
 
@@ -186,9 +185,8 @@ Implemented in this Backend snapshot:
 Still required before a production Frontend can connect as an independent
 process:
 
-- apply and review the companion patch in a Runtime checkout, then run the
-  actual Lua 5.4 Runtime integration workflow;
-- build and test against an installed `cdin-kernel` 1.2.1+ package;
+- obtain a green current-commit run of the Lua 5.4 + installed Kernel + Runtime
+  integration workflow on the updated repositories;
 - implement a concrete Unix Domain Socket adapter and Windows Named Pipe
   adapter (or formally constrain the first release to in-process embedding);
 - run live two-client Frontend ↔ Backend ↔ Runtime ↔ Kernel tests and the full

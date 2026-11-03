@@ -5,10 +5,10 @@ the Backend creates. This page documents the Host services implemented by this
 Backend source snapshot.
 
 Backend reports Host API `0.3.0`, Kernel ABI `1.1.x` and Frontend Protocol
-`0.2.0`. Host API `0.x` is provisional: Runtime must require the exact major
-and minor version. The Runtime repository's inspected `main` source still
-requires `0.2.x`; apply the companion Runtime integration patch before live
-startup. Never disable or weaken the version guard to hide a mismatch.
+`0.2.0`. Host API `0.x` is provisional: Runtime requires the exact major
+and minor version. The aligned Runtime repository implements Host API `0.3.0`
+and Frontend Protocol `0.2.0`; the Backend integration workflow checks out that
+source directly. Never disable or weaken the version guard to hide a mismatch.
 
 ## 1. Host descriptor
 
@@ -145,9 +145,11 @@ Backend completion queue, but must never enter the Lua state.
 
 ## 7. Current verification boundary
 
-Protocol-only and service tests pass in this workspace. The actual Runtime
-repository remains a separate, read-only inspected source tree; the companion
-patch must be applied and reviewed there. A production build with real Lua 5.4
-development headers and the installed Kernel package, plus live Runtime/Kernel
-integration tests, has not yet been executed. The OS transport adapters are
-also not part of this source snapshot.
+Protocol-only and service tests pass in this workspace. Runtime source now implements the matching Host API and the Backend workflow
+checks it out directly. This local workspace still lacks Lua 5.4 development
+headers and the installed Kernel package, so the live C bridge and Protocol
+smoke scenario have not been executed locally. The `runtime-integration.yml`
+workflow is configured to run Runtime tests, compile the production bridge and
+exercise create/edit/versioned-line-read/shutdown against real Lua 5.4 and the
+Kernel package. Concrete OS transport adapters are not part of this snapshot;
+a green workflow run must still be confirmed after the Runtime update is merged.

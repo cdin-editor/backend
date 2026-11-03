@@ -1,7 +1,14 @@
 ## Unreleased
 
-- Add standalone deterministic-CBOR Frontend Protocol codec, bounded bidirectional queues, headless replay tests and fuzz entry point.
-- Resolve Spec ADR-0018/0019 links and document remaining Runtime, transport, Kernel/Lua and platform integration gates.
+### Added
+
+- Extend the real Lua 5.4 + Kernel + Runtime smoke test through the in-process Frontend Protocol: create a document, insert text, and verify version-pinned line windows preserve CRLF, LF and NUL bytes.
+- Add a strict-C11 compile gate for the extended live integration smoke test.
+
+### Changed
+
+- Consume the aligned Runtime `main` source directly in `runtime-integration.yml`; the workflow no longer rewrites a Runtime checkout with a Backend-owned patch script.
+- Document the Runtime 0.3.0 / Frontend Protocol 0.2.0 contract and distinguish implemented in-process integration from the still-missing OS transport and GUI.
 
 # Changelog
 

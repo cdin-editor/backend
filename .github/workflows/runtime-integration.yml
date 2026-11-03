@@ -19,22 +19,20 @@ jobs:
       KERNEL_PREFIX: ${{ github.workspace }}/.deps/kernel
     steps:
       - uses: actions/checkout@v7
-      - name: Check out the pinned Runtime source
+      - name: Check out the aligned Runtime source
         uses: actions/checkout@v7
         with:
           repository: cdin-editor/runtime
-          ref: 29289db83133155493766d51f64ecc02c67bb5a9
+          ref: main
           path: runtime
           persist-credentials: false
       - name: Install Lua 5.4 and native build tools
         run: |
           sudo apt-get update
           sudo apt-get install --yes build-essential pkg-config lua5.4 liblua5.4-dev
-      - name: Apply Backend-compatible Runtime integration
-        run: python3 integration/runtime-patch/apply_runtime_integration.py --runtime-root runtime
-      - name: Verify patched Runtime tests and boundaries
+      - name: Verify the committed Runtime contract and tests
         working-directory: runtime
-        run: make test boundary
+        run: make check boundary
       - name: Install the pinned Kernel package
         run: |
           bash scripts/install-deps.sh --prefix "$KERNEL_PREFIX"
