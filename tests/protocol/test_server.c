@@ -135,9 +135,10 @@ static void test_queue_flush_ack_and_inbound(void)
 static void test_atomic_ui_batch(void)
 {
     static const uint8_t options_payload[] = {
-        0xa2u,
-        0x68u, 'r','e','v','i','s','i','o','n', 0x01u,
-        0x65u, 't','h','e','m','e', 0x67u, 'd','e','f','a','u','l','t'
+        0xa3u,
+        0x65u, 't','h','e','m','e', 0x67u, 'd','e','f','a','u','l','t',
+        0x67u, 'o','p','t','i','o','n','s', 0xa0u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x01u
     };
     static const uint8_t status_payload[] = {
         0xa2u,

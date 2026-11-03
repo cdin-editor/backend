@@ -1,13 +1,13 @@
-# Known limitations — Backend 0.2.0
+# Known limitations — Backend 1.0.0
 
-This page describes the supplied Backend source snapshot and distinguishes implemented C-side functionality from the remaining live CI, transport and platform verification gates.
+This page describes the supplied Backend source snapshot and distinguishes implemented C-side functionality from cross-repository integration that still requires the Runtime source change and real dependencies.
 
 ## 1. Frontend Protocol
 
 Implemented in the Backend source:
 
 - deterministic-CBOR encode/decode and four-byte big-endian stream framing;
-- payload validators for the complete Protocol 0.2.0 catalogue;
+- payload validators for the complete Protocol 1.0.0 catalogue;
 - bounded client queues, input sequence checks, Driver/Observer permissions and FIFO Driver promotion;
 - atomic UI snapshot/response batches with real `ui.flush` markers, ACK release and backpressure;
 - Lua-side `cdin.ui-model.v1` projection to typed Protocol messages;
@@ -19,7 +19,8 @@ Implemented in the Backend source:
 Still missing or externally gated:
 
 - no TCP/Unix-domain socket, Windows Named Pipe or terminal-stream adapter;
-- a green live Lua 5.4 + installed Kernel + Runtime integration result is not yet available from this workspace;
+- the inspected Runtime `main` branch has not yet received the companion Host API 0.3.0 / Protocol 1.0.0 patch, and is incompatible with the Backend's current descriptor;
+- no real Lua 5.4 + installed Kernel live UI/event/line-read integration result in this workspace;
 - no production Frontend toolkit/application; Headless Frontend is a test harness;
 - optional clipboard/dialog capabilities are not advertised (accepted capability set is empty).
 
@@ -27,13 +28,7 @@ See [Frontend Protocol implementation status](frontend-protocol.md) for the exac
 
 ## 2. Runtime and Kernel integration
 
-Backend and the aligned Runtime source now both target Host API `0.3.0` and
-Frontend Protocol `0.2.0`. Runtime implements `documents.read_lines`,
-`Runtime:read_view_lines()`, `Runtime:handle_frontend_event()`, UI snapshot
-version/style metadata and bounded model limits. The Backend CI workflow consumes
-the Runtime repository directly and runs its tests before the live native smoke
-test. The Runtime change must merge before the Backend workflow update because the
-live integration workflow checks out Runtime `main`.
+Backend 1.0.0 reports Host API `0.3.0` and Frontend Protocol `1.0.0`. The read-only inspection of `cdin-editor/runtime` `main` found Host API `0.2.0`, Frontend Protocol `0.1.0`, no `documents.read_lines`, and no complete Frontend event dispatcher. The file `integration/runtime-patch/apply_runtime_integration.py` is a fail-closed local patcher for a Runtime checkout. It is not a claim that the public Runtime repository was modified or that the patch has been tested against a full Runtime checkout in this environment.
 
 Kernel public header declares ABI `1.1.0` and package version `1.2.1`; Backend consumes it only through the existing public-header adapter. No Kernel ABI change is included.
 
@@ -47,4 +42,4 @@ Only the available Linux environment was built and tested in this workspace. mac
 
 ## 4. ABI and release status
 
-Backend library version `0.2.0`, Host API `0.3.0` and Frontend Protocol `0.2.0` are provisional. Do not tag or publish Backend `1.0.0` until the live Runtime + Lua 5.4 + Kernel workflow passes, the transport scope is resolved and implemented, the platform matrix is green, and the public ABI/Host API/Protocol stability policy is accepted.
+Backend source/API and Frontend Protocol are versioned `1.0.0` in this package. The complete product integration remains gated: apply and test the Runtime Host API `0.3.0` / Protocol `1.0.0` patch, pass real Lua + Kernel tests, implement and test the selected transport, obtain the platform matrix, and verify the production logger dependency before claiming a production-ready CDIN editor.

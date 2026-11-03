@@ -118,6 +118,24 @@ static void test_ui_flush_scopes(void)
 
 static void test_semantic_schema_constraints(void)
 {
+    static const uint8_t ui_options_empty[] = {
+        0xa3u,
+        0x65u, 't','h','e','m','e', 0x64u, 'd','a','r','k',
+        0x67u, 'o','p','t','i','o','n','s', 0xa0u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x01u
+    };
+    static const uint8_t ui_options_tab_width[] = {
+        0xa3u,
+        0x65u, 't','h','e','m','e', 0x64u, 'd','a','r','k',
+        0x67u, 'o','p','t','i','o','n','s', 0xa1u,
+            0x69u, 't','a','b','_','w','i','d','t','h', 0x00u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x01u
+    };
+    static const uint8_t ui_options_missing_map[] = {
+        0xa2u,
+        0x65u, 't','h','e','m','e', 0x64u, 'd','a','r','k',
+        0x68u, 'r','e','v','i','s','i','o','n', 0x01u
+    };
     static const uint8_t key_ok[] = {
         0xa3u,
         0x63u, 'k','e','y', 0x61u, 'A',
@@ -197,6 +215,12 @@ static void test_semantic_schema_constraints(void)
         0x6au, 'f','i','r','s','t','_','l','i','n','e', 0x00u
     };
 
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_UI_OPTIONS, ui_options_empty,
+                                          sizeof(ui_options_empty)) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_UI_OPTIONS, ui_options_tab_width,
+                                          sizeof(ui_options_tab_width)) == CDIN_PROTOCOL_INVALID_SCHEMA);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_UI_OPTIONS, ui_options_missing_map,
+                                          sizeof(ui_options_missing_map)) == CDIN_PROTOCOL_INVALID_SCHEMA);
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_INPUT_KEY, key_ok, sizeof(key_ok)) == CDIN_PROTOCOL_OK);
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_INPUT_KEY, key_bad_action, sizeof(key_bad_action)) == CDIN_PROTOCOL_INVALID_SCHEMA);
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_INPUT_KEY, key_duplicate_modifier, sizeof(key_duplicate_modifier)) == CDIN_PROTOCOL_INVALID_SCHEMA);
@@ -255,6 +279,16 @@ static void test_ui_layout_schema(void)
         0x6bu, 'a','c','t','i','v','e','_','l','e','a','f', 0x66u, 'l','e','a','f','-','2',
         0x68u, 'r','e','v','i','s','i','o','n', 0x01u
     };
+    static const uint8_t nullable_active_view[] = {
+        0xa2u, 0x66u, 'l','a','y','o','u','t', 0xa2u,
+        0x64u, 'r','o','o','t', 0xa4u,
+        0x62u, 'i','d', 0x66u, 'l','e','a','f','-','1',
+        0x64u, 'k','i','n','d', 0x64u, 'l','e','a','f',
+        0x65u, 'v','i','e','w','s', 0x80u,
+        0x6bu, 'a','c','t','i','v','e','_','v','i','e','w', 0xf6u,
+        0x6bu, 'a','c','t','i','v','e','_','l','e','a','f', 0x66u, 'l','e','a','f','-','1',
+        0x68u, 'r','e','v','i','s','i','o','n', 0x01u
+    };
     static const char split_layout_hex[] =
         "a2666c61796f7574a264726f6f74a66269646773706c69742d31646178697368766572746963616c"
         "646b696e646573706c6974656669727374a4626964666c6561662d31646b696e64646c656166"
@@ -269,6 +303,8 @@ static void test_ui_layout_schema(void)
                                           sizeof(empty_layout)) == CDIN_PROTOCOL_OK);
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_UI_LAYOUT, leaf_layout,
                                           sizeof(leaf_layout)) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_UI_LAYOUT, nullable_active_view,
+                                          sizeof(nullable_active_view)) == CDIN_PROTOCOL_OK);
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_UI_LAYOUT, stale_active_leaf,
                                           sizeof(stale_active_leaf)) == CDIN_PROTOCOL_INVALID_SCHEMA);
     assert(decode_hex_fixture(split_layout_hex, split_layout, sizeof(split_layout),
@@ -316,8 +352,10 @@ static int decode_hex_fixture(const char *hex, uint8_t *output, size_t capacity,
 
 static void test_stream_partial_io(void)
 {
-    static const uint8_t payload[] = { 0xa2u, 0x65u, 't','h','e','m','e', 0x64u, 'd','a','r','k',
-                                       0x68u, 'r','e','v','i','s','i','o','n', 0x01u };
+    static const uint8_t payload[] = { 0xa3u,
+        0x65u, 't','h','e','m','e', 0x64u, 'd','a','r','k',
+        0x67u, 'o','p','t','i','o','n','s', 0xa0u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x01u };
     uint8_t encoded[256];
     uint8_t received[256];
     size_t encoded_length = 0u;

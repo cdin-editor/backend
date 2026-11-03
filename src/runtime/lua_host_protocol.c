@@ -36,6 +36,7 @@ typedef struct lua_map_key {
     const char *value;
     size_t length;
     int is_ratio;
+    int synthetic_null;
 } lua_map_key;
 
 typedef struct ui_message {
@@ -186,6 +187,8 @@ static int encode_lua_table(lua_State *L, int index, cbor_buffer *output,
     size_t iteration_count = 0u;
     size_t position;
     int is_array = 1;
+    int is_leaf_node = 0;
+    int has_active_view = 0;
     int absolute = lua_absindex(L, index);
     const void *identity = lua_topointer(L, absolute);
     unsigned ancestor;
@@ -193,6 +196,20 @@ static int encode_lua_table(lua_State *L, int index, cbor_buffer *output,
     if (depth >= UI_MAX_PROTOCOL_DEPTH || lua_table_has_metatable(L, absolute)) return 0;
     for (ancestor = 0u; ancestor < depth; ancestor++) if (ancestors[ancestor] == identity) return 0;
     ancestors[depth] = identity;
+
+    /* Protocol 1.0 requires every PaneTree leaf to carry active_view, using
+     * CBOR null when the leaf has no active view. Lua represents an absent
+     * optional value as nil (which cannot be stored as a table key), so add
+     * this one schema-defined null field during projection. */
+    lua_getfield(L, absolute, "kind");
+    is_leaf_node = lua_type(L, -1) == LUA_TSTRING &&
+        strcmp(lua_tostring(L, -1), "leaf") == 0;
+    lua_pop(L, 1);
+    if (is_leaf_node) {
+        lua_getfield(L, absolute, "active_view");
+        has_active_view = !lua_isnil(L, -1);
+        lua_pop(L, 1);
+    }
 
     array_count = lua_rawlen(L, absolute);
     lua_pushnil(L);
@@ -238,8 +255,17 @@ static int encode_lua_table(lua_State *L, int index, cbor_buffer *output,
         keys[key_count].value = key;
         keys[key_count].length = key_length;
         keys[key_count].is_ratio = key_length == 5u && memcmp(key, "ratio", 5u) == 0;
+        keys[key_count].synthetic_null = 0;
         key_count++;
         lua_pop(L, 1);
+    }
+    if (is_leaf_node && !has_active_view) {
+        if (key_count >= UI_MAX_MODEL_MAP_FIELDS) return 0;
+        keys[key_count].value = "active_view";
+        keys[key_count].length = sizeof("active_view") - 1u;
+        keys[key_count].is_ratio = 0;
+        keys[key_count].synthetic_null = 1;
+        key_count++;
     }
     qsort(keys, key_count, sizeof(keys[0]), lua_key_compare);
     for (position = 1u; position < key_count; position++) {
@@ -250,13 +276,17 @@ static int encode_lua_table(lua_State *L, int index, cbor_buffer *output,
         const lua_map_key *key = &keys[position];
         const char *encoded_key = key->is_ratio ? "ratio_bp" : key->value;
         size_t encoded_length = key->is_ratio ? 8u : key->length;
-        lua_pushlstring(L, key->value, key->length);
-        lua_rawget(L, absolute);
+        if (!key->synthetic_null) {
+            lua_pushlstring(L, key->value, key->length);
+            lua_rawget(L, absolute);
+        }
         if (!cbor_write_text(output, encoded_key, encoded_length)) {
-            lua_pop(L, 1);
+            if (!key->synthetic_null) lua_pop(L, 1);
             return 0;
         }
-        if (key->is_ratio) {
+        if (key->synthetic_null) {
+            if (!cbor_write_null(output)) return 0;
+        } else if (key->is_ratio) {
             lua_Number ratio;
             uint64_t ratio_bp;
             if (!lua_isnumber(L, -1)) { lua_pop(L, 1); return 0; }
@@ -274,7 +304,7 @@ static int encode_lua_table(lua_State *L, int index, cbor_buffer *output,
             lua_pop(L, 1);
             return 0;
         }
-        lua_pop(L, 1);
+        if (!key->synthetic_null) lua_pop(L, 1);
     }
     return 1;
 }
@@ -473,22 +503,30 @@ done:
     return ok;
 }
 
-static int build_options_message(const char *theme, size_t theme_length, uint64_t revision,
+static int build_options_message(lua_State *L, int model,
+                                 const char *theme, size_t theme_length, uint64_t revision,
                                  ui_message *messages, size_t capacity, size_t *count, size_t limit)
 {
-    cbor_buffer theme_value = { 0 }, revision_value = { 0 }, payload = { 0 };
-    cbor_map_entry entries[2];
+    cbor_buffer theme_value = { 0 }, revision_value = { 0 }, options_value = { 0 }, payload = { 0 };
+    cbor_map_entry entries[3];
     int ok = 0;
     if (!make_text_value(theme, theme_length, &theme_value, limit) ||
         !make_uint_value(revision, &revision_value, limit)) goto done;
+    lua_getfield(L, model, "options");
+    if (!lua_istable(L, -1)) { lua_pop(L, 1); goto done; }
+    options_value.limit = limit;
+    if (!encode_lua_item(L, -1, &options_value)) { lua_pop(L, 1); goto done; }
+    lua_pop(L, 1);
     entries[0].key = "theme"; entries[0].key_length = 5u;
     entries[0].value = theme_value.data; entries[0].value_length = theme_value.length;
-    entries[1].key = "revision"; entries[1].key_length = 8u;
-    entries[1].value = revision_value.data; entries[1].value_length = revision_value.length;
-    if (!make_map_payload(&payload, entries, 2u, limit)) goto done;
+    entries[1].key = "options"; entries[1].key_length = 7u;
+    entries[1].value = options_value.data; entries[1].value_length = options_value.length;
+    entries[2].key = "revision"; entries[2].key_length = 8u;
+    entries[2].value = revision_value.data; entries[2].value_length = revision_value.length;
+    if (!make_map_payload(&payload, entries, 3u, limit)) goto done;
     ok = append_ui_message(messages, capacity, count, CDIN_PROTOCOL_UI_OPTIONS, &payload);
 done:
-    buffer_free(&theme_value); buffer_free(&revision_value); buffer_free(&payload);
+    buffer_free(&theme_value); buffer_free(&revision_value); buffer_free(&options_value); buffer_free(&payload);
     return ok;
 }
 
@@ -708,7 +746,7 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
     batch = (cdin_protocol_message *)calloc(capacity, sizeof(*batch));
     if (messages == NULL || batch == NULL) { status = CDIN_BACKEND_NO_MEMORY; goto done; }
 
-    if (!build_options_message(theme, theme_length, revision, messages, capacity, &message_count, limit) ||
+    if (!build_options_message(L, model, theme, theme_length, revision, messages, capacity, &message_count, limit) ||
         !ui_messages_fit_budget(messages, message_count, limit)) {
         status = CDIN_BACKEND_LIMIT_EXCEEDED; goto done;
     }

@@ -47,9 +47,8 @@ notification, and search calls),
 details are part of the installed public C API. The bridge is optional at
 build time, but a Runtime-enabled application requires Lua 5.4. [Spec ADR-0019](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0019-runtime-bridge.md)
 selects the PUC Lua 5.4 C API for v1. LuaJIT FFI and MetaCall are out of scope.
-The mechanism is implemented. A committed live Backend workflow exercises the
-real Runtime source; its green result remains a release gate and must not be
-inferred from Kernel-independent tests.
+This is an accepted mechanism, not proof that live Lua + Kernel integration
+currently passes.
 
 Lua is owned by the Backend's creating thread. Worker threads never enter Lua, call Lua callbacks, or touch Lua userdata.
 
@@ -59,9 +58,7 @@ The Session stores document identity and lifecycle metadata plus view-to-documen
 
 ### `protocol/`
 
-The Protocol module contains a transport-independent deterministic-CBOR codec, bounded per-client queues, sequence validation, driver/observer permissions, atomic flush groups and ACKs. The Lua Host bridge projects `cdin.ui-model.v1`, queues inbound Frontend events, dispatches them on the Lua owner thread and serves version-pinned `view.request_lines` from a Kernel Snapshot. [ADR-0018](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0018-frontend-protocol-wire.md) fixes the wire format and standalone codec location. Concrete socket/named-pipe transport remains outside this source snapshot. Runtime
-implements Host API 0.3.0 and its Protocol event/line-read entry points in the
-companion Runtime repository; the Backend live-integration workflow consumes it.
+The Protocol module contains a transport-independent deterministic-CBOR codec, bounded per-client queues, sequence validation, driver/observer permissions, atomic flush groups and ACKs. The Lua Host bridge projects `cdin.ui-model.v1`, queues inbound Frontend events, dispatches them on the Lua owner thread and serves version-pinned `view.request_lines` from a Kernel Snapshot. [ADR-0018](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0018-frontend-protocol-wire.md) fixes the wire format and standalone codec location. Concrete socket/named-pipe transport remains outside this source snapshot; Runtime must first receive the companion Host API 0.3.0 patch.
 
 ### `os/` and `platform/`
 

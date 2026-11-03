@@ -19,7 +19,7 @@ jobs:
       KERNEL_PREFIX: ${{ github.workspace }}/.deps/kernel
     steps:
       - uses: actions/checkout@v7
-      - name: Check out the aligned Runtime source
+      - name: Check out the pinned Runtime source
         uses: actions/checkout@v7
         with:
           repository: cdin-editor/runtime
@@ -30,9 +30,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes build-essential pkg-config lua5.4 liblua5.4-dev
-      - name: Verify the committed Runtime contract and tests
+      - name: Verify patched Runtime tests and boundaries
         working-directory: runtime
-        run: make check boundary
+        run: make test boundary
       - name: Install the pinned Kernel package
         run: |
           bash scripts/install-deps.sh --prefix "$KERNEL_PREFIX"

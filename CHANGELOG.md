@@ -1,16 +1,29 @@
 ## Unreleased
 
+- Add standalone deterministic-CBOR Frontend Protocol codec, bounded bidirectional queues, headless replay tests and fuzz entry point.
+- Resolve Spec ADR-0018/0019 links and document remaining Runtime, transport, Kernel/Lua and platform integration gates.
+
+# Changelog
+
+## [1.0.0] - 2026-11-04
+
 ### Added
 
-- Extend the real Lua 5.4 + Kernel + Runtime smoke test through the in-process Frontend Protocol: create a document, insert text, and verify version-pinned line windows preserve CRLF, LF and NUL bytes.
-- Add a strict-C11 compile gate for the extended live integration smoke test.
+- Freeze the Backend library source version at `1.0.0` and align the independent Frontend Protocol codec/server with shared Protocol `1.0.0`.
+- Require Protocol 1.0.0 `ui.options.options` and validate its typed option values.
+- Accept nullable PaneTree leaf `active_view` and project an omitted Runtime nil value as CBOR null.
+- Record shared Protocol 1.0.0 contract and Backend/Runtime integration gates.
 
 ### Changed
 
-- Consume the aligned Runtime `main` source directly in `runtime-integration.yml`; the workflow no longer rewrites a Runtime checkout with a Backend-owned patch script.
-- Document the Runtime 0.3.0 / Frontend Protocol 0.2.0 contract and distinguish implemented in-process integration from the still-missing OS transport and GUI.
+- Update the companion Runtime integration patch to advertise Frontend Protocol `1.0.0`; Runtime Host API remains `0.3.0`.
+- Preserve the Backend's explicit empty optional-capability set; no clipboard/dialog capability is advertised by this build.
 
-# Changelog
+### Verification limits
+
+- Kernel-independent Protocol, Headless and Backend service tests pass in the supplied Linux build. The full Kernel + Lua 5.4 Backend target and the Runtime patch have not been built/applied in this environment.
+- No concrete UDS/Named Pipe transport or native macOS/Windows verification is included. This is a source/API and wire-contract version freeze, not a claim that the complete CDIN product is production-integrated.
+
 
 All notable changes to the Backend are recorded here. This project follows Semantic Versioning while the `0.x` API remains provisional.
 

@@ -320,7 +320,7 @@ static const field_rule schema_response_dialog[] = {
     RULE("request_id", FIELD_UINT), RULE("accepted", FIELD_BOOL), OPT("selected", FIELD_TEXT)
 };
 static const field_rule schema_ack[] = { RULE("sequence", FIELD_UINT) };
-static const field_rule schema_ui_options[] = { RULE("revision", FIELD_UINT), RULE("theme", FIELD_TEXT) };
+static const field_rule schema_ui_options[] = { RULE("revision", FIELD_UINT), RULE("theme", FIELD_TEXT), RULE("options", FIELD_MAP) };
 static const field_rule schema_ui_styles[] = { RULE("revision", FIELD_UINT), RULE("styles", FIELD_MAP) };
 static const field_rule schema_ui_layout[] = { RULE("revision", FIELD_UINT), RULE("layout", FIELD_MAP) };
 static const field_rule schema_view_lines[] = {
@@ -647,18 +647,25 @@ static int cbor_validate_pane_node(const uint8_t *data, size_t length, unsigned 
         cbor_cursor views_cursor;
         uint8_t major;
         uint64_t view_count;
+        cbor_item active_item;
+        int active_present;
+        int active_is_null;
         if (!cbor_find_field(data, length, "views", &views, &present) || !present ||
             views.major != CBOR_MAJOR_ARRAY ||
-            !cbor_field_text_nonempty(data, length, "active_view", 128u) ||
-            !cbor_field_text_value(data, length, "active_view", &active_view, &active_view_length)) return 0;
+            !cbor_find_field(data, length, "active_view", &active_item, &active_present) ||
+            !active_present) return 0;
+        active_is_null = active_item.major == CBOR_MAJOR_SIMPLE && active_item.value == CBOR_NULL;
+        if (!active_is_null &&
+            (active_item.major != CBOR_MAJOR_TEXT ||
+             !cbor_field_text_value(data, length, "active_view", &active_view, &active_view_length))) return 0;
         views_cursor.data = data + views.start;
         views_cursor.length = views.end - views.start;
         views_cursor.offset = 0u;
         if (!cbor_read_head(&views_cursor, &major, &view_count) || major != CBOR_MAJOR_ARRAY ||
-            view_count == 0u || view_count > 64u ||
+            view_count > 64u ||
             !cbor_validate_string_array(data + views.start, views.end - views.start) ||
-            !cbor_array_has_text(data + views.start, views.end - views.start,
-                                 active_view, active_view_length)) return 0;
+            (!active_is_null && !cbor_array_has_text(data + views.start, views.end - views.start,
+                                                       active_view, active_view_length))) return 0;
         if (node_id_length == active_leaf_length &&
             memcmp(node_id, active_leaf, active_leaf_length) == 0) *active_leaf_found = 1;
         return 1;
@@ -728,6 +735,40 @@ static int cbor_validate_range_array(const uint8_t *data, size_t length)
             start > end) return 0;
     }
     return cursor.offset == cursor.length;
+}
+
+static int cbor_option_bool(const uint8_t *data, size_t length, const char *name)
+{
+    cbor_item item;
+    int present;
+    return cbor_find_field(data, length, name, &item, &present) &&
+           (!present || (item.major == CBOR_MAJOR_SIMPLE &&
+                         (item.value == CBOR_FALSE || item.value == CBOR_TRUE)));
+}
+
+static int cbor_validate_ui_options(const uint8_t *payload, size_t payload_length)
+{
+    cbor_item options;
+    int present;
+    const uint8_t *data;
+    size_t length;
+    static const char *const cursor_shapes[] = { "block", "bar", "underline" };
+    if (!cbor_find_field(payload, payload_length, "options", &options, &present) ||
+        !present || options.major != CBOR_MAJOR_MAP) return 0;
+    data = payload + options.start;
+    length = options.end - options.start;
+    if (!cbor_field_uint_range(data, length, "tab_width", 1u, 64u) &&
+        cbor_find_field(data, length, "tab_width", &options, &present) && present) return 0;
+    if (!cbor_option_bool(data, length, "wrap") ||
+        !cbor_option_bool(data, length, "line_numbers") ||
+        !cbor_option_bool(data, length, "relative_line_numbers") ||
+        !cbor_option_bool(data, length, "cursor_blink")) return 0;
+    if (cbor_find_field(data, length, "cursor_shape", &options, &present) && present &&
+        !cbor_field_text_in(data, length, "cursor_shape", cursor_shapes,
+                            sizeof(cursor_shapes) / sizeof(cursor_shapes[0]))) return 0;
+    if (cbor_find_field(data, length, "title", &options, &present) && present &&
+        options.major != CBOR_MAJOR_TEXT) return 0;
+    return 1;
 }
 
 static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
@@ -801,6 +842,9 @@ static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
         break;
     case CDIN_PROTOCOL_UI_LAYOUT:
         if (!cbor_validate_ui_layout(payload, payload_length)) return 0;
+        break;
+    case CDIN_PROTOCOL_UI_OPTIONS:
+        if (!cbor_validate_ui_options(payload, payload_length)) return 0;
         break;
     case CDIN_PROTOCOL_UI_NOTIFY:
         if (!cbor_field_text_nonempty(payload, payload_length, "text", 4096u) ||

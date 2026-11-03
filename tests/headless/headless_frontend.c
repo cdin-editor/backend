@@ -84,8 +84,9 @@ static void test_bidirectional_record_and_replay(void)
         0x68u, 'r','e','v','i','s','i','o','n', 0x01u
     };
     static const uint8_t options[] = {
-        0xa2u,
+        0xa3u,
         0x65u, 't','h','e','m','e', 0x64u, 'd','a','r','k',
+        0x67u, 'o','p','t','i','o','n','s', 0xa0u,
         0x68u, 'r','e','v','i','s','i','o','n', 0x01u
     };
     headless_frontend recorder = { 0 };

@@ -45,5 +45,5 @@ const char *cdin_backend_state_name(cdin_backend_state state)
 
 const char *cdin_backend_version(void)
 {
-    return "0.2.0";
+    return "1.0.0";
 }

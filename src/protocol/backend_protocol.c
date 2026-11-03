@@ -182,7 +182,7 @@ static cdin_backend_status receive_hello(cdin_backend_frontend *frontend,
     hello.major = supported_major;
     hello.minor = supported_minor;
     hello.frontend_name = frontend_name;
-    hello.capabilities = 0u; /* No optional wire capabilities are advertised in 0.2.0. */
+    hello.capabilities = 0u; /* No optional wire capabilities are implemented by this Backend build. */
     status = cdin_protocol_hello_accept((cdin_protocol_client *)frontend, &hello, &ack);
     if (status != CDIN_BACKEND_OK) return status;
     public_ack.major = ack.major;

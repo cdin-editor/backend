@@ -1,4 +1,4 @@
-# Frontend Protocol 0.2.0 — Backend implementation status
+# Frontend Protocol 1.0.0 — Backend implementation status
 
 The normative contract is owned by the [CDIN Spec wire contract](https://github.com/cdin-editor/spec/blob/main/docs/architecture/protocol-wire.md), [UI Model v1](https://github.com/cdin-editor/spec/blob/main/docs/architecture/ui-model-v1.md) and [ADR-0018](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0018-frontend-protocol-wire.md). This page records the implemented Backend source and its remaining integration boundaries.
 
@@ -6,10 +6,10 @@ The normative contract is owned by the [CDIN Spec wire contract](https://github.
 
 | Layer | Source | Implemented behavior | Not implied |
 |---|---|---|---|
-| Wire codec | `include/cdin/protocol.h`, `src/protocol/codec.c` | Deterministic-CBOR frame encode/decode, 4-byte big-endian framing, complete v0.2.0 payload schemas, canonical map validation, bounded depth/frame size, partial read/write callbacks | No socket, named-pipe, authentication or network listener |
+| Wire codec | `include/cdin/protocol.h`, `src/protocol/codec.c` | Deterministic-CBOR frame encode/decode, 4-byte big-endian framing, Protocol 1.0.0 payload schemas, canonical map validation, bounded depth/frame size, partial read/write callbacks | No socket, named-pipe, authentication or network listener |
 | Per-client server | `src/protocol/server.c` | Handshake, one Driver lease, Observer permissions, oldest-client promotion, bounded queues, payload copies, coalescing, atomic snapshot/response batches, flush scopes, ACK validation and per-client snapshot revision tracking | No concurrent writer or last-writer-wins semantics |
 | Backend C facade | `include/cdin/backend_protocol.h`, `src/protocol/backend_protocol.c` | Typed client API, receive validation/queue, output frame encoding, attach snapshot replay and ACK-triggered retry of a newer missed snapshot | Requires caller to supply transport I/O |
-| Lua UI projection | `src/runtime/lua_host_protocol.c` | Validates `cdin.ui-model.v1` fields, deterministically serializes semantic maps, converts split ratios to integer basis points, projects options/styles/layout/status/prompt/views/panels and atomically appends `ui.flush` | Requires the aligned Runtime 0.3.0 snapshot fields; live Lua/Kernel CI remains a release gate |
+| Lua UI projection | `src/runtime/lua_host_protocol.c` | Validates `cdin.ui-model.v1` fields, deterministically serializes semantic maps, converts split ratios to integer basis points, projects options/styles/layout/status/prompt/views/panels and atomically appends `ui.flush` | Runtime source patch must be applied to the separate Runtime repository |
 | Inbound Runtime dispatch | `src/runtime/lua_host_protocol.c`, `src/runtime/lua_host.c` | Drains validated events on Lua owner thread; dispatches `handle_frontend_event`; handles `view.request_lines` and response generation | Does not provide platform transport |
 | Kernel line window | `src/kernel/adapter_documents.c`, `src/runtime/lua_host_documents.c` | Temporary immutable Snapshot, version check, Kernel line-index APIs, complete binary-safe line byte strings and bounded payload budget | No persistent/shadow text buffer |
 | Headless client | `tests/headless/headless_frontend.c` | Display-free encode/decode, binary input, event record and deterministic replay | Not a GUI toolkit or OS transport |
@@ -22,7 +22,7 @@ Each stream frame is a four-byte unsigned big-endian body length followed by one
 
 `ui.flush.payload.scope` is `snapshot` or `response`. A snapshot flush must include `revision`; a response flush must not. The Frontend stages a complete snapshot and replaces its semantic UI state only after the snapshot flush. Response groups never clear UI state. `view.cursor.scroll_anchor` is a zero-based document byte offset; `view.lines.total_lines` is the logical line count observed in the same Kernel Snapshot as the returned lines.
 
-Protocol v0.2.0 does not encode floating-point values. Pane split ratios are converted to `ratio_bp` integer basis points (`1000..8999`). All opaque content, including `input.paste` and `view.lines[].bytes`, remains CBOR byte strings.
+Protocol 1.0.0 does not encode floating-point values. Pane split ratios are converted to `ratio_bp` integer basis points (`1000..8999`). All opaque content, including `input.paste` and `view.lines[].bytes`, remains CBOR byte strings.
 
 ## 3. Implemented publication and inbound paths
 
@@ -36,19 +36,12 @@ Inbound `cdin_backend_frontend_receive()` performs frame/schema/direction/sequen
 
 ## 5. Remaining integration gates
 
-The Backend Protocol/Runtime bridge source and Runtime-side Host API 0.3.0 methods
-are implemented in their respective repositories. The remaining gates before
-production Frontend use are:
+The Backend Protocol/Runtime bridge source is implemented in this local source snapshot, but the following must still happen before production Frontend use:
 
-1. Obtain a green current-commit run of `runtime-integration.yml` with PUC Lua
-   5.4, the installed `cdin-kernel` package and the aligned Runtime source. The
-   local workspace lacks Lua 5.4 development headers and the installed Kernel
-   package, so the live C bridge was not executed here.
-2. Implement concrete Unix Domain Socket and Windows Named Pipe transports if
-   the Frontend is a separate process. The codec's partial-I/O callbacks do
-   not themselves open a transport.
-3. Run the current-commit Linux/macOS/Windows matrix and live two-client
-   GUI/headless conformance tests.
+1. Apply and review `integration/runtime-patch/apply_runtime_integration.py` in a `cdin-editor/runtime` checkout. That patch aligns Runtime Host API `0.3.0` and Protocol `1.0.0`, adds `document_lines`, `read_lines()`, UI-model style/version fields, event dispatch and FakeHost/integration tests. The public Runtime repository was inspected read-only and was not changed or pushed.
+2. Build against real PUC Lua 5.4 development files and the installed `cdin-kernel` package, then run the real Runtime + Kernel integration suite. The required development dependencies are unavailable in this workspace.
+3. Implement concrete Unix Domain Socket and Windows Named Pipe transports if the Frontend is a separate process. The codec's partial-I/O callbacks do not themselves open a transport.
+4. Run the current-commit Linux/macOS/Windows matrix and live two-client GUI/headless conformance tests.
 
 See [Frontend Integration Guide](frontend-integration.md), [Host API](host-api.md), [Spec traceability](spec-traceability.md) and [1.0.0 readiness](1.0.0-readiness.md).
 
