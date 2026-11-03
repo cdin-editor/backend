@@ -556,6 +556,16 @@ runtime:close_document(event_document.id)
             "required line service negative test")
         changed[path] = text
 
+        # The logging suite is loaded separately by tests/integration/run.lua.
+        # Keep its startup metadata assertion aligned with Host API 0.3.0.
+        path = "tests/integration/logging_tests.lua"
+        text = load(root, path)
+        text = replace_once(text,
+            'A.equal(started.fields.host_api, "0.2.0"); A.equal(started.fields.kernel_abi, "1.1.0")',
+            'A.equal(started.fields.host_api, "0.3.0"); A.equal(started.fields.kernel_abi, "1.1.0")',
+            "logging test Host API version")
+        changed[path] = text
+
         # 9. Update the normative Runtime Host API contract.
         path = "docs/contracts/runtime-host-api.md"
         text = load(root, path)
