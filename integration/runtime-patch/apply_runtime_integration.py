@@ -576,7 +576,7 @@ runtime:close_document(event_document.id)
             '- `read_lines(handle, { first_line, line_count, expected_version, max_bytes? }) -> { version, first_line, total_lines, lines: array<byte-string> }`',
             "Host API line-window method")
         text = replace_once(text,
-            'Reads return caller-owned transient strings. `DocumentClient` must not store those\nstrings on itself. Snapshot handles are pinned leases and must be released.',
+            'Reads\nreturn caller-owned transient strings. `DocumentClient` must not store those\nstrings on itself. Snapshot handles are pinned leases and must be released.',
             'Reads return caller-owned transient strings. `read_lines` returns a bounded, version-pinned\n'
             'window; each line is an exact byte string including its original EOL bytes. The Backend\n'
             'may return a complete prefix when `max_bytes` is reached; it never splits a line.\n'
