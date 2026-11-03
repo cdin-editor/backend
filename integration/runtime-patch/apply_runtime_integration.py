@@ -500,7 +500,10 @@ runtime:close_document(line_document.id)
         frontend_tests = r'''-- The Frontend event path reaches Runtime on its owner thread and preserves paste bytes.
 local event_document = runtime:open_document("abc")
 local event_view = runtime:create_view(event_document.id)
-event_view:set_cursor(1)
+local initial_position_event = runtime:handle_frontend_event({
+  type = "view.set_position", view_id = event_view.id, version = event_document.version, anchor = 1, caret = 1,
+})
+A.equal(initial_position_event.status, "position-set")
 local text_event = runtime:handle_frontend_event({ type = "input.text", text = "Q" })
 A.equal(text_event.status, "inserted")
 local after_text = event_document:read(0, 16); A.equal(after_text, "aQbc")
