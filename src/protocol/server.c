@@ -281,11 +281,13 @@ int cdin_protocol_can_mutate(const cdin_protocol_client *client)
     return client != NULL && !client->closed && client->attached && client->driver;
 }
 
-cdin_backend_status cdin_protocol_enqueue(cdin_protocol_client *client,
-                                           const cdin_protocol_message *message)
+static cdin_backend_status protocol_enqueue(cdin_protocol_client *client,
+                                            const cdin_protocol_message *message,
+                                            int is_flush_marker)
 {
     uint8_t *copy = NULL;
     size_t i;
+    size_t queue_limit;
     int handshake_reply;
     if (client == NULL || message == NULL || client->closed) return CDIN_BACKEND_INVALID_ARGUMENT;
     handshake_reply = (message->type == CDIN_PROTOCOL_HELLO_ACK ||
@@ -334,7 +336,16 @@ cdin_backend_status cdin_protocol_enqueue(cdin_protocol_client *client,
             }
         }
     }
-    if (client->queue_count == client->queue_capacity) {
+    /* Keep one queue slot for the ui.flush marker while another flush can
+     * still be published. Without this reservation normal messages could
+     * consume the entire queue and make an otherwise valid batch impossible
+     * to terminate atomically. The internal flush path may consume the slot. */
+    queue_limit = client->queue_capacity;
+    if (!is_flush_marker &&
+        client->pending_flushes < client->server->max_unacked_flushes) {
+        queue_limit--; /* queue_capacity is guaranteed to be non-zero. */
+    }
+    if (client->queue_count >= queue_limit) {
         free(copy);
         cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "message_queue_full",
                           client->id, CDIN_BACKEND_QUEUE_FULL, (uint64_t)client->queue_count);
@@ -350,6 +361,12 @@ cdin_backend_status cdin_protocol_enqueue(cdin_protocol_client *client,
     cdin_protocol_log(client->server, CDIN_BACKEND_LOG_TRACE, "message_queued",
                       client->id, CDIN_BACKEND_OK, (uint64_t)message->type);
     return CDIN_BACKEND_OK;
+}
+
+cdin_backend_status cdin_protocol_enqueue(cdin_protocol_client *client,
+                                           const cdin_protocol_message *message)
+{
+    return protocol_enqueue(client, message, 0);
 }
 
 static size_t write_cbor_uint(uint8_t *output, uint64_t value)
@@ -549,7 +566,7 @@ cdin_backend_status cdin_protocol_flush(cdin_protocol_client *client, uint64_t *
     marker.type = CDIN_PROTOCOL_UI_FLUSH;
     marker.payload = payload;
     marker.payload_length = payload_length;
-    status = cdin_protocol_enqueue(client, &marker);
+    status = protocol_enqueue(client, &marker, 1);
     if (status != CDIN_BACKEND_OK) return status;
     client->next_flush_sequence = sequence;
     for (i = 0u; i < client->queue_count; i++) {

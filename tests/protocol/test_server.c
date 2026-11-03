@@ -230,9 +230,51 @@ static void test_atomic_ui_batch(void)
     cdin_protocol_server_destroy(server);
 }
 
+
+static void test_flush_slot_is_reserved(void)
+{
+    static const uint8_t layout_payload[] = {
+        0xa2u, 0x66u, 'l','a','y','o','u','t', 0xa2u,
+        0x64u, 'r','o','o','t', 0xf6u,
+        0x6bu, 'a','c','t','i','v','e','_','l','e','a','f', 0xf6u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x01u
+    };
+    cdin_protocol_server *server = NULL;
+    cdin_protocol_client *driver;
+    cdin_protocol_message message;
+    uint64_t flush_sequence = 0u;
+
+    assert(cdin_protocol_server_create(1u, 3u, 1u, 0x11223344u, 0u,
+                                       1024u, NULL, NULL, &server) == CDIN_BACKEND_OK);
+    driver = new_attached(server, "flush-reservation-driver");
+    memset(&message, 0, sizeof(message));
+    message.type = CDIN_PROTOCOL_UI_LAYOUT;
+    message.payload = layout_payload;
+    message.payload_length = sizeof(layout_payload);
+    message.coalesce_key = 1u;
+    assert(cdin_protocol_enqueue(driver, &message) == CDIN_BACKEND_OK);
+    message.coalesce_key = 2u;
+    assert(cdin_protocol_enqueue(driver, &message) == CDIN_BACKEND_OK);
+    message.coalesce_key = 3u;
+    assert(cdin_protocol_enqueue(driver, &message) == CDIN_BACKEND_QUEUE_FULL);
+    assert(cdin_protocol_pending_messages(driver) == 2u);
+
+    /* The reserved slot must remain available for the atomic group marker. */
+    assert(cdin_protocol_flush(driver, &flush_sequence) == CDIN_BACKEND_OK);
+    assert(flush_sequence == 1u);
+    assert(cdin_protocol_pending_messages(driver) == 3u);
+    assert(cdin_protocol_flush(driver, &flush_sequence) == CDIN_BACKEND_BUSY);
+    assert(cdin_protocol_ack(driver, flush_sequence) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_pending_messages(driver) == 0u);
+
+    assert(cdin_protocol_client_close(driver) == CDIN_BACKEND_OK);
+    cdin_protocol_server_destroy(server);
+}
+
 int main(void)
 {
     test_queue_flush_ack_and_inbound();
+    test_flush_slot_is_reserved();
     test_atomic_ui_batch();
     puts("PASS protocol server: single-driver permissions, stable promotion, schema validation, coalescing, atomic UI batch, flush marker, ACK and binary event queue");
     return 0;
