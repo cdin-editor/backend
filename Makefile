@@ -163,15 +163,15 @@ $(E2E_FS): tests/e2e/scenarios/platform_file_workflow.c $(SCENARIO_OBJ) $(SERVIC
 $(E2E_PROCESS): tests/e2e/scenarios/process_supervision.c $(SCENARIO_OBJ) $(SERVICE_LIB) $(CHILD_BIN)
 	$(CC) $(BASE_CPPFLAGS) -Itests/e2e/support $(CFLAGS) $< $(SCENARIO_OBJ) $(SERVICE_LIB) -o $@ $(THREAD_LIBS)
 
-$(INTEGRATION_BIN): tests/integration/backend_session.c $(BACKEND_LIB) $(SERVICE_LIB) | require-kernel
+$(INTEGRATION_BIN): tests/integration/backend_session.c $(BACKEND_LIB) $(SERVICE_LIB) $(PROTOCOL_LIB) | require-kernel
 	@mkdir -p $(@D)
 	$(CC) $(BASE_CPPFLAGS) $(PLATFORM_CPPFLAGS) $(KERNEL_CFLAGS) $(CFLAGS) $< \
-	  $(BACKEND_LIB) $(SERVICE_LIB) $(KERNEL_LIBS) $(LUA_LIBS) $(THREAD_LIBS) -o $@
+	  $(BACKEND_LIB) $(SERVICE_LIB) $(PROTOCOL_LIB) $(KERNEL_LIBS) $(LUA_LIBS) $(THREAD_LIBS) -o $@
 
-$(INTEGRATION_KERNEL_BIN): tests/integration/kernel_document_workflow.c $(BACKEND_LIB) $(SERVICE_LIB) | require-kernel
+$(INTEGRATION_KERNEL_BIN): tests/integration/kernel_document_workflow.c $(BACKEND_LIB) $(SERVICE_LIB) $(PROTOCOL_LIB) | require-kernel
 	@mkdir -p $(@D)
 	$(CC) $(BASE_CPPFLAGS) -Isrc $(PLATFORM_CPPFLAGS) $(KERNEL_CFLAGS) $(CFLAGS) $< \
-	  $(BACKEND_LIB) $(SERVICE_LIB) $(KERNEL_LIBS) $(LUA_LIBS) $(THREAD_LIBS) -o $@
+	  $(BACKEND_LIB) $(SERVICE_LIB) $(PROTOCOL_LIB) $(KERNEL_LIBS) $(LUA_LIBS) $(THREAD_LIBS) -o $@
 
 $(EXAMPLE_BACKUP_BIN): examples/atomic-backup/main.c $(SERVICE_LIB)
 	@mkdir -p $(@D)
