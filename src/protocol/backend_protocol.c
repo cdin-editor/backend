@@ -216,6 +216,9 @@ cdin_backend_status cdin_backend_frontend_ack(cdin_backend_frontend *frontend, u
 size_t cdin_backend_frontend_pending(const cdin_backend_frontend *frontend)
 { return cdin_protocol_pending_messages((const cdin_protocol_client *)frontend); }
 
+cdin_backend_status cdin_backend_frontend_consume_control_message(cdin_backend_frontend *frontend)
+{ return cdin_protocol_consume_control_message((cdin_protocol_client *)frontend); }
+
 cdin_backend_status cdin_backend_frontend_message_at(const cdin_backend_frontend *frontend,
                                                        size_t index,
                                                        cdin_backend_message *out_message)
