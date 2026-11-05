@@ -789,6 +789,7 @@ static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
     uint64_t minimum_minor;
     uint64_t maximum_major;
     uint64_t maximum_minor;
+    uint64_t role_epoch;
     switch (type) {
     case CDIN_PROTOCOL_HELLO:
         if (!cbor_field_text_nonempty(payload, payload_length, "frontend_name", 96u) ||
@@ -798,6 +799,10 @@ static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
             !cbor_field_uint(payload, payload_length, "maximum_minor", &maximum_minor) ||
             minimum_major > maximum_major ||
             (minimum_major == maximum_major && minimum_minor > maximum_minor)) return 0;
+        break;
+    case CDIN_PROTOCOL_DRIVER_ROLE_CHANGED:
+        if (!cbor_field_uint(payload, payload_length, "epoch", &role_epoch) ||
+            role_epoch == 0u) return 0;
         break;
     case CDIN_PROTOCOL_ATTACH:
         if (!cbor_field_text_in(payload, payload_length, "units", units,
