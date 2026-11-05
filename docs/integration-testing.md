@@ -39,6 +39,7 @@ ctest --test-dir build --output-on-failure
 | `platform_file_workflow` | An editor saves a workspace document and reads it in bounded chunks | Atomic publication, overwrite disabled, maximum file size, abort preserving old data, chunk boundaries, directory listing and relative paths |
 | `process_supervision` | An editor invokes a formatter or helper process | Shell metacharacters passed literally, captured output, timeout, termination and non-zero exit code |
 | `backend_session` | A terminal Frontend joins a live headless session | Lifecycle transitions, wrong-thread pump, frontend limit, version mismatch, driver/observer roles, coalescing, queue full, flush backpressure, ACK validation, promotion and diagnostic logging |
+| `ui_snapshot_budget` | A Runtime UI snapshot is published as an atomic group of individually framed messages | Aggregate snapshot budget is independent from per-frame size; oversized individual frames and aggregate overflow are rejected |
 | `kernel_document_workflow` | A user edits and saves a document with concurrent views | Document create/read/replace, stale-version rejection, stable snapshots, notifications, staged transaction, commit/abort, undo/redo, search, unsupported regex and stale handle rejection |
 
 ## Keep a scenario useful
