@@ -28,11 +28,13 @@ add_library(cdin_backend_services STATIC
     src/platform/native_path.c
     src/platform/thread.c)
 add_library(cdin::backend_services ALIAS cdin_backend_services)
+set_target_properties(cdin_backend_services PROPERTIES EXPORT_NAME backend_services)
 
 # The wire codec is deliberately independent from Kernel, Lua and OS services.
 # A Frontend can link this target alone to validate and frame protocol messages.
 add_library(cdin_protocol STATIC src/protocol/codec.c)
 add_library(cdin::protocol ALIAS cdin_protocol)
+set_target_properties(cdin_protocol PROPERTIES EXPORT_NAME protocol)
 target_compile_features(cdin_protocol PUBLIC c_std_11)
 target_include_directories(cdin_protocol
     PUBLIC
@@ -89,6 +91,7 @@ add_library(cdin_backend STATIC
     src/runtime/lua_host_protocol.c
     src/session/session.c)
 add_library(cdin::backend ALIAS cdin_backend)
+set_target_properties(cdin_backend PROPERTIES EXPORT_NAME backend)
 target_compile_features(cdin_backend PUBLIC c_std_11)
 target_include_directories(cdin_backend
     PUBLIC
@@ -117,11 +120,13 @@ endif()
 endif()
 
 install(TARGETS cdin_backend_services cdin_protocol
+    EXPORT cdinBackendTargets
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 if(CDIN_BUILD_BACKEND)
     install(TARGETS cdin_backend
+        EXPORT cdinBackendTargets
         ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
@@ -131,6 +136,25 @@ configure_file(packaging/cdin-backend-services.pc.in
                "${CMAKE_CURRENT_BINARY_DIR}/cdin-backend-services.pc" @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdin-backend-services.pc"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+
+include(CMakePackageConfigHelpers)
+set(CDIN_BACKEND_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/cdinBackend")
+configure_package_config_file(
+    packaging/cdinBackendConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/cdinBackendConfig.cmake"
+    INSTALL_DESTINATION "${CDIN_BACKEND_CMAKE_DIR}")
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/cdinBackendConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY SameMajorVersion)
+install(EXPORT cdinBackendTargets
+    FILE cdinBackendTargets.cmake
+    NAMESPACE cdin::
+    DESTINATION "${CDIN_BACKEND_CMAKE_DIR}")
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/cdinBackendConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/cdinBackendConfigVersion.cmake"
+    DESTINATION "${CDIN_BACKEND_CMAKE_DIR}")
 
 if(CDIN_BUILD_EXAMPLES)
     add_executable(cdin_backend_atomic_backup examples/atomic-backup/main.c)
