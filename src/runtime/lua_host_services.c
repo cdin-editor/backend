@@ -25,9 +25,14 @@ static int lua_fs_read_capture_chunk(void *opaque, const uint8_t *bytes, size_t 
         length > SIZE_MAX - capture->length) return -1;
     required = capture->length + length;
     if (required > capture->capacity) {
-        next = capture->capacity == 0u ? 4096u : capture->capacity;
+        next = capture->capacity;
+        if (next == 0u) {
+            next = capture->maximum < UINT64_C(4096)
+                ? (size_t)capture->maximum : 4096u;
+        }
         while (next < required) {
-            if ((uint64_t)next > capture->maximum / 2u) {
+            if (next > SIZE_MAX / 2u ||
+                (uint64_t)next > capture->maximum / 2u) {
                 next = (size_t)capture->maximum;
                 break;
             }
@@ -60,6 +65,7 @@ int lua_fs_read_file(lua_State *L)
     if (host == NULL || host->backend == NULL) return raise_argument(L, "fs.read_file");
     maximum = host->backend->config.max_document_bytes;
     if (maximum == 0u || maximum > (uint64_t)LUA_MAXINTEGER) maximum = (uint64_t)LUA_MAXINTEGER;
+    if (maximum > (uint64_t)SIZE_MAX) maximum = (uint64_t)SIZE_MAX;
     if (lua_istable(L, 3)) {
         lua_getfield(L, 3, "max_bytes");
         if (!lua_isnil(L, -1)) {
