@@ -23,6 +23,7 @@ typedef struct cdin_protocol_hello_ack {
     uint64_t client_id;
     uint64_t session_id;
     int driver;
+    uint64_t driver_role_epoch;
 } cdin_protocol_hello_ack;
 typedef struct cdin_protocol_message {
     uint32_t type;
