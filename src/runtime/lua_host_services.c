@@ -3,6 +3,30 @@
 typedef int lua_host_services_disabled_translation_unit;
 #else
 #include "lua_host_internal.h"
+#include <errno.h>
+
+/* Keep filesystem errors machine-readable across the optional Host boundary. */
+static int raise_fs_read_error(lua_State *L, int error_number)
+{
+    const char *code = "IO_ERROR";
+    const char *message = "filesystem read failed";
+    if (error_number == ENOENT || error_number == ENOTDIR) {
+        code = "NOT_FOUND";
+        message = "file does not exist";
+    } else if (error_number == EFBIG) {
+        code = "LIMIT_EXCEEDED";
+        message = "file exceeds the configured read limit";
+    } else if (error_number == ENOMEM || error_number == EOVERFLOW) {
+        code = "NO_MEMORY";
+        message = "could not allocate bounded file-read buffer";
+    }
+    lua_createtable(L, 0, 3);
+    lua_pushliteral(L, "cdin.runtime"); lua_setfield(L, -2, "domain");
+    lua_pushstring(L, code); lua_setfield(L, -2, "code");
+    lua_pushstring(L, message); lua_setfield(L, -2, "message");
+    return lua_error(L);
+}
+
 
 
 typedef struct lua_fs_read_capture {
