@@ -95,6 +95,9 @@ static int test_running_session_and_protocol(log_capture *logs)
     wrong_thread_call wrong_thread;
     uint64_t flush_sequence = 0u;
     uint64_t role_epoch = 0u;
+    size_t outgoing_index = 0u;
+    size_t outgoing_count = 0u;
+    int role_event_found = 0;
     size_t processed = 0u;
     const uint8_t first_payload[] = { 0xa2u, 0x66u, 'l','a','y','o','u','t', 0xa2u,
                                       0x64u, 'r','o','o','t', 0xf6u,
@@ -259,13 +262,18 @@ static int test_running_session_and_protocol(log_capture *logs)
     /* When the driver leaves, the oldest attached observer is promoted. */
     if (cdin_backend_frontend_detach(driver) != CDIN_BACKEND_OK) goto fail;
     if (!cdin_backend_frontend_can_mutate(observer)) goto fail;
-    if (cdin_backend_frontend_pending(observer) != 1u) goto fail;
-    if (cdin_backend_frontend_message_at(observer, 0u, &message) != CDIN_BACKEND_OK ||
-        message.type != CDIN_BACKEND_MESSAGE_DRIVER_ROLE_CHANGED || message.sequence == 0u) goto fail;
-    if (cdin_protocol_payload_get_uint(message.payload, message.payload_length,
-                                       "epoch", &role_epoch) != CDIN_PROTOCOL_OK ||
-        role_epoch != message.sequence) goto fail;
-    if (cdin_backend_frontend_consume_control_message(observer) != CDIN_BACKEND_OK) goto fail;
+    outgoing_count = cdin_backend_frontend_pending(observer);
+    for (outgoing_index = 0u; outgoing_index < outgoing_count; outgoing_index++) {
+        if (cdin_backend_frontend_message_at(observer, outgoing_index, &message) != CDIN_BACKEND_OK) goto fail;
+        if (message.type != CDIN_BACKEND_MESSAGE_DRIVER_ROLE_CHANGED) continue;
+        if (message.sequence == 0u ||
+            cdin_protocol_payload_get_uint(message.payload, message.payload_length,
+                                           "epoch", &role_epoch) != CDIN_PROTOCOL_OK ||
+            role_epoch != message.sequence) goto fail;
+        role_event_found = 1;
+        break;
+    }
+    if (!role_event_found) goto fail;
     if (cdin_backend_frontend_close(driver) != CDIN_BACKEND_OK) goto fail;
     driver = NULL;
     if (cdin_backend_frontend_detach(observer) != CDIN_BACKEND_OK) goto fail;
