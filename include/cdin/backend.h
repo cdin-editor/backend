@@ -73,6 +73,14 @@ typedef enum cdin_backend_log_output {
 typedef void (*cdin_backend_log_callback)(void *context, int level,
                                           const char *message, size_t length);
 
+/*
+ * A nonblocking, thread-safe notification that Backend has queued worker
+ * completions for the owner thread to process with cdin_backend_pump().
+ * It may be called concurrently from worker threads and must not re-enter
+ * Backend APIs. The context is borrowed until cdin_backend_destroy().
+ */
+typedef void (*cdin_backend_wakeup_callback)(void *context);
+
 typedef enum cdin_backend_state {
     CDIN_BACKEND_STATE_CREATED = 0,
     CDIN_BACKEND_STATE_STARTING,
@@ -108,6 +116,9 @@ typedef struct cdin_backend_config {
     void *log_context; /* Borrowed until cdin_backend_destroy(). */
     /* Independent cap for Kernel logger records; does not limit Protocol payloads. */
     uint64_t max_log_message_bytes;
+    /* Optional readiness notification for worker completions. */
+    cdin_backend_wakeup_callback wakeup_callback;
+    void *wakeup_context;
 } cdin_backend_config;
 
 /* Fill all fields with portable defaults before applying caller overrides. */
