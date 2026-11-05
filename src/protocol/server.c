@@ -272,11 +272,13 @@ cdin_backend_status cdin_protocol_detach(cdin_protocol_client *client)
 cdin_backend_status cdin_protocol_client_close(cdin_protocol_client *client)
 {
     cdin_protocol_server *server;
+    cdin_backend_status status;
     size_t i;
     if (client == NULL || client->closed) return CDIN_BACKEND_INVALID_STATE;
     server = client->server;
     if (client->attached) {
-        (void)cdin_protocol_detach(client);
+        status = cdin_protocol_detach(client);
+        if (status != CDIN_BACKEND_OK) return status;
     } else if (server->driver_client_id == client->id) {
         /* Release a HELLO-time lease reservation; promote the oldest attached
          * observer through the same observable role-transition path. */
