@@ -26,7 +26,9 @@ int main(void)
     /* Aggregate snapshot size is independently bounded, including flush
      * reserve, without integer underflow when the budget is exhausted. */
     total = 0u;
-    assert(cdin_ui_snapshot_budget_add(&total, 32u * 1024u,
+    assert(cdin_ui_snapshot_budget_add(&total, 16u * 1024u,
+                                       frame_limit, snapshot_limit));
+    assert(cdin_ui_snapshot_budget_add(&total, 16u * 1024u,
                                        frame_limit, snapshot_limit));
     assert(cdin_ui_snapshot_budget_add(&total, 16u * 1024u,
                                        frame_limit, snapshot_limit));
