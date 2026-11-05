@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Add optional bounded `host.fs:read_file()` for exact binary file bytes with structured file-read errors.
+- Increment Backend library/package version to `1.0.2`; Host API remains `1.0.0` because file reading is additive and optional.
+
 - Add standalone deterministic-CBOR Frontend Protocol codec, bounded bidirectional queues, headless replay tests and fuzz entry point.
 - Resolve Spec ADR-0018/0019 links and document remaining Runtime, transport, Kernel/Lua and platform integration gates.
 
