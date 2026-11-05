@@ -4,6 +4,92 @@ typedef int lua_host_services_disabled_translation_unit;
 #else
 #include "lua_host_internal.h"
 
+
+typedef struct lua_fs_read_capture {
+    uint8_t *bytes;
+    size_t length;
+    size_t capacity;
+    uint64_t maximum;
+} lua_fs_read_capture;
+
+/* FS-001 / BE-005: retain only bounded byte copies; never expose a borrowed
+ * Backend chunk pointer to Lua or normalize NUL/invalid UTF-8. */
+static int lua_fs_read_capture_chunk(void *opaque, const uint8_t *bytes, size_t length)
+{
+    lua_fs_read_capture *capture = (lua_fs_read_capture *)opaque;
+    size_t required;
+    size_t next;
+    uint8_t *grown;
+    if (capture == NULL || (bytes == NULL && length != 0u) ||
+        (uint64_t)length > capture->maximum - (uint64_t)capture->length ||
+        length > SIZE_MAX - capture->length) return -1;
+    required = capture->length + length;
+    if (required > capture->capacity) {
+        next = capture->capacity == 0u ? 4096u : capture->capacity;
+        while (next < required) {
+            if ((uint64_t)next > capture->maximum / 2u) {
+                next = (size_t)capture->maximum;
+                break;
+            }
+            next *= 2u;
+        }
+        if (next < required) return -1;
+        grown = (uint8_t *)realloc(capture->bytes, next);
+        if (grown == NULL) return -1;
+        capture->bytes = grown;
+        capture->capacity = next;
+    }
+    if (length != 0u) memcpy(capture->bytes + capture->length, bytes, length);
+    capture->length = required;
+    return 0;
+}
+
+/*
+ * Optional additive Host service: fs.read_file(path, { max_bytes? }) -> bytes.
+ * The bound defaults to Backend's max_document_bytes and may only be lowered.
+ */
+int lua_fs_read_file(lua_State *L)
+{
+    cdin_lua_host *host = (cdin_lua_host *)lua_touserdata(L, lua_upvalueindex(1));
+    const char *path = luaL_checkstring(L, 2);
+    uint64_t maximum;
+    uint64_t total = 0u;
+    lua_fs_read_capture capture;
+    static const char empty[] = "";
+    int status;
+    if (host == NULL || host->backend == NULL) return raise_argument(L, "fs.read_file");
+    maximum = host->backend->config.max_document_bytes;
+    if (maximum == 0u || maximum > (uint64_t)LUA_MAXINTEGER) maximum = (uint64_t)LUA_MAXINTEGER;
+    if (lua_istable(L, 3)) {
+        lua_getfield(L, 3, "max_bytes");
+        if (!lua_isnil(L, -1)) {
+            lua_Integer requested = luaL_checkinteger(L, -1);
+            if (requested <= 0 || (uint64_t)requested > maximum) {
+                lua_pop(L, 1);
+                return raise_argument(L, "fs.read_file max_bytes");
+            }
+            maximum = (uint64_t)requested;
+        }
+        lua_pop(L, 1);
+    }
+    memset(&capture, 0, sizeof(capture));
+    capture.maximum = maximum;
+    status = cdin_fs_read_chunks(path, 65536u, maximum,
+                                 lua_fs_read_capture_chunk, &capture, &total);
+    if (status != 0) {
+        free(capture.bytes);
+        return raise_io(L, "fs.read_file");
+    }
+    if (total != (uint64_t)capture.length) {
+        free(capture.bytes);
+        return raise_io(L, "fs.read_file");
+    }
+    lua_pushlstring(L, capture.length == 0u ? empty : (const char *)capture.bytes,
+                    capture.length);
+    free(capture.bytes);
+    return 1;
+}
+
 int lua_fs_begin_atomic_write(lua_State *L)
 {
     cdin_lua_host *host = (cdin_lua_host *)lua_touserdata(L, lua_upvalueindex(1));
