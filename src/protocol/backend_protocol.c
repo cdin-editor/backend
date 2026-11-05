@@ -187,7 +187,8 @@ static int role_event_capability_requested(const uint8_t *array, size_t length)
                    (size_t)text_length) == 0) return 1;
         offset += (size_t)text_length;
     }
-    return offset == length ? 0 : 0;
+    (void)offset;
+    return 0;
 }
 
 static cdin_backend_status queue_hello_ack(cdin_backend_frontend *frontend,
