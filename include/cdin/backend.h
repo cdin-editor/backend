@@ -20,6 +20,8 @@ extern "C" {
 
 #define CDIN_BACKEND_DEFAULT_MAX_FRONTENDS 8u
 #define CDIN_BACKEND_DEFAULT_QUEUE_CAPACITY 128u
+#define CDIN_BACKEND_DEFAULT_MAX_SNAPSHOT_BYTES (4u * 1024u * 1024u)
+#define CDIN_BACKEND_MAX_SNAPSHOT_BYTES (64u * 1024u * 1024u)
 /* A maximum Runtime UI snapshot (32 views, 16 panels) needs 118 queue items including ui.flush. */
 #define CDIN_BACKEND_MIN_RUNTIME_UI_QUEUE_CAPACITY 118u
 #define CDIN_BACKEND_DEFAULT_JOB_THREADS 2u
@@ -119,6 +121,9 @@ typedef struct cdin_backend_config {
     /* Optional readiness notification for worker completions. */
     cdin_backend_wakeup_callback wakeup_callback;
     void *wakeup_context;
+    /* Aggregate semantic UI snapshot budget, distinct from the per-frame cap.
+     * Appended for struct_size compatibility; defaults to 4 MiB. */
+    uint64_t max_snapshot_bytes;
 } cdin_backend_config;
 
 /* Fill all fields with portable defaults before applying caller overrides. */
