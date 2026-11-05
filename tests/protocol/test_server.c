@@ -348,7 +348,8 @@ static void test_driver_role_notification_is_capability_gated(void)
                                           event.payload, event.payload_length) == CDIN_PROTOCOL_OK);
     assert(cdin_protocol_payload_get_uint(event.payload, event.payload_length,
                                            "epoch", &epoch) == CDIN_PROTOCOL_OK);
-    assert(epoch == 2u);
+    assert(epoch == event.sequence);
+    assert(epoch == 1u);
     assert(cdin_protocol_payload_get_bool(event.payload, event.payload_length,
                                            "driver", &is_driver) == CDIN_PROTOCOL_OK);
     assert(is_driver == 1);
