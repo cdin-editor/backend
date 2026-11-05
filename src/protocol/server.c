@@ -239,7 +239,6 @@ cdin_backend_status cdin_protocol_attach(cdin_protocol_client *client)
 
 cdin_backend_status cdin_protocol_detach(cdin_protocol_client *client)
 {
-    size_t i;
     cdin_protocol_server *server;
     if (client == NULL || client->closed || !client->attached) return CDIN_BACKEND_INVALID_STATE;
     server = client->server;
