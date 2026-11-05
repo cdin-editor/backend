@@ -214,7 +214,7 @@ cdin_backend_status cdin_backend_start(cdin_backend *backend)
         status = cdin_protocol_server_create(backend->config.max_frontends,
                                              backend->config.outgoing_queue_capacity,
                                              backend->config.max_pending_completions,
-                                             backend->session_id, 0u,
+                                             backend->session_id, CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS,
                                              backend->config.max_message_bytes,
                                              cdin_backend_protocol_log_sink, backend,
                                              &backend->protocol);
