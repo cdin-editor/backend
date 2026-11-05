@@ -149,82 +149,82 @@ static int test_running_session_and_protocol(log_capture *logs)
         !cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_NOTIFICATIONS) ||
         !cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_SEARCH_LITERAL) ||
         !cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_SEARCH_BYTES) ||
-        cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_SEARCH_REGEX)) goto fail;
+        cdin_kernel_host_has_feature(backend->kernel, CDIN_HOST_FEATURE_SEARCH_REGEX)) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
-    if (cdin_backend_get_state(backend) != CDIN_BACKEND_STATE_CREATED) goto fail;
-    if (cdin_backend_pump(backend, 1u, &processed) != CDIN_BACKEND_INVALID_STATE) goto fail;
-    if (cdin_backend_start(backend) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_get_state(backend) != CDIN_BACKEND_STATE_RUNNING) goto fail;
-    if (cdin_backend_start(backend) != CDIN_BACKEND_INVALID_STATE) goto fail;
+    if (cdin_backend_get_state(backend) != CDIN_BACKEND_STATE_CREATED) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_pump(backend, 1u, &processed) != CDIN_BACKEND_INVALID_STATE) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_start(backend) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_get_state(backend) != CDIN_BACKEND_STATE_RUNNING) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_start(backend) != CDIN_BACKEND_INVALID_STATE) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
     /* The API is owner-thread-affine: a worker may do native work, but it may
      * not pump callbacks that could enter Lua or Frontend state. */
     wrong_thread.backend = backend;
     wrong_thread.result = CDIN_BACKEND_OK;
-    if (cdin_thread_create(&thread, call_pump_from_worker, &wrong_thread) != 0) goto fail;
+    if (cdin_thread_create(&thread, call_pump_from_worker, &wrong_thread) != 0) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     cdin_thread_join(thread);
-    if (wrong_thread.result != CDIN_BACKEND_INVALID_STATE) goto fail;
+    if (wrong_thread.result != CDIN_BACKEND_INVALID_STATE) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
-    if (cdin_backend_frontend_open(backend, &driver) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_frontend_open(backend, &observer) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_frontend_open(backend, &overflow) != CDIN_BACKEND_LIMIT_EXCEEDED) goto fail;
+    if (cdin_backend_frontend_open(backend, &driver) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_open(backend, &observer) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_open(backend, &overflow) != CDIN_BACKEND_LIMIT_EXCEEDED) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
     memset(&hello, 0, sizeof(hello));
     hello.major = CDIN_BACKEND_PROTOCOL_MAJOR + 1u;
     hello.minor = CDIN_BACKEND_PROTOCOL_MINOR;
     hello.frontend_name = "example-terminal";
     hello.capabilities = UINT64_MAX;
-    if (cdin_backend_frontend_hello(driver, &hello, &ack) != CDIN_BACKEND_VERSION_MISMATCH) goto fail;
+    if (cdin_backend_frontend_hello(driver, &hello, &ack) != CDIN_BACKEND_VERSION_MISMATCH) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
     hello.major = CDIN_BACKEND_PROTOCOL_MAJOR;
     hello.minor = CDIN_BACKEND_PROTOCOL_MINOR;
-    if (cdin_backend_frontend_hello(driver, &hello, &ack) != CDIN_BACKEND_OK) goto fail;
-    if (ack.session_id == 0u || ack.client_id == 0u) goto fail;
-    if ((ack.accepted_capabilities & CDIN_BACKEND_CAP_DRIVER_ROLE_EVENTS) == 0u) goto fail;
-    if (cdin_backend_frontend_attach(driver) != CDIN_BACKEND_OK) goto fail;
-    if (!cdin_backend_frontend_can_mutate(driver)) goto fail;
+    if (cdin_backend_frontend_hello(driver, &hello, &ack) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (ack.session_id == 0u || ack.client_id == 0u) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if ((ack.accepted_capabilities & CDIN_BACKEND_CAP_DRIVER_ROLE_EVENTS) == 0u) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_attach(driver) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (!cdin_backend_frontend_can_mutate(driver)) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
-    if (cdin_backend_frontend_hello(observer, &hello, &ack) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_frontend_attach(observer) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_frontend_can_mutate(observer)) goto fail;
+    if (cdin_backend_frontend_hello(observer, &hello, &ack) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_attach(observer) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_can_mutate(observer)) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
     memset(&message, 0, sizeof(message));
     message.type = CDIN_BACKEND_MESSAGE_UI_LAYOUT;
     message.coalesce_key = 77u;
     message.payload = first_payload;
     message.payload_length = sizeof(first_payload);
-    if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_OK) goto fail;
+    if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
     /* An unflushed state snapshot is replaced in place by its newest revision. */
     message.payload = latest_payload;
     message.payload_length = sizeof(latest_payload);
-    if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_OK) goto fail;
+    if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
     message.type = CDIN_BACKEND_MESSAGE_UI_PANEL;
     message.coalesce_key = 78u;
     message.payload = other_payload;
     message.payload_length = sizeof(other_payload);
-    if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_OK) goto fail;
+    if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     message.coalesce_key = 79u;
     message.payload = third_payload;
     message.payload_length = sizeof(third_payload);
-    if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_QUEUE_FULL) goto fail;
-    if (cdin_backend_frontend_pending(driver) != 2u) goto fail;
+    if (cdin_backend_frontend_enqueue(driver, &message) != CDIN_BACKEND_QUEUE_FULL) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_pending(driver) != 2u) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
-    if (cdin_backend_frontend_flush(driver, &flush_sequence) != CDIN_BACKEND_OK || flush_sequence != 1u) goto fail;
-    if (cdin_backend_frontend_pending(driver) != 3u) goto fail; /* Includes the real ui.flush message. */
-    if (cdin_backend_frontend_flush(driver, &flush_sequence) != CDIN_BACKEND_BUSY) goto fail;
-    if (cdin_backend_frontend_ack(driver, 99u) != CDIN_BACKEND_INVALID_ARGUMENT) goto fail;
-    if (cdin_backend_frontend_message_at(driver, 0u, &message) != CDIN_BACKEND_OK) goto fail;
+    if (cdin_backend_frontend_flush(driver, &flush_sequence) != CDIN_BACKEND_OK || flush_sequence != 1u) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_pending(driver) != 3u) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0); /* Includes the real ui.flush message. */
+    if (cdin_backend_frontend_flush(driver, &flush_sequence) != CDIN_BACKEND_BUSY) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_ack(driver, 99u) != CDIN_BACKEND_INVALID_ARGUMENT) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_message_at(driver, 0u, &message) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     if (message.payload_length != sizeof(latest_payload) ||
-        memcmp(message.payload, latest_payload, message.payload_length) != 0) goto fail;
+        memcmp(message.payload, latest_payload, message.payload_length) != 0) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     {
         uint8_t encoded[256];
         size_t encoded_length = 0u;
         cdin_protocol_message_view decoded;
-        if (cdin_backend_frontend_encode_message(driver, 2u, encoded, sizeof(encoded), &encoded_length) != CDIN_BACKEND_OK) goto fail;
+        if (cdin_backend_frontend_encode_message(driver, 2u, encoded, sizeof(encoded), &encoded_length) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
         if (cdin_protocol_decode_frame(encoded, encoded_length, &decoded, sizeof(encoded)) != CDIN_PROTOCOL_OK ||
-            decoded.type != CDIN_PROTOCOL_UI_FLUSH || decoded.sequence != 3u) goto fail;
+            decoded.type != CDIN_PROTOCOL_UI_FLUSH || decoded.sequence != 3u) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     }
 
     /* Inbound binary paste must survive byte-for-byte and observers cannot mutate. */
@@ -236,55 +236,55 @@ static int test_running_session_and_protocol(log_capture *logs)
     input_view.name_space = "core";
     input_view.payload = text_payload;
     input_view.payload_length = sizeof(text_payload);
-    if (cdin_protocol_encode_frame(&input_view, frame, sizeof(frame), &frame_length, sizeof(frame)) != CDIN_PROTOCOL_OK) goto fail;
-    if (cdin_backend_frontend_receive(observer, frame, frame_length) != CDIN_BACKEND_PERMISSION_DENIED) goto fail;
+    if (cdin_protocol_encode_frame(&input_view, frame, sizeof(frame), &frame_length, sizeof(frame)) != CDIN_PROTOCOL_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_receive(observer, frame, frame_length) != CDIN_BACKEND_PERMISSION_DENIED) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     input_view.type = CDIN_PROTOCOL_INPUT_PASTE;
     input_view.payload = paste_payload;
     input_view.payload_length = sizeof(paste_payload);
-    if (cdin_protocol_encode_frame(&input_view, frame, sizeof(frame), &frame_length, sizeof(frame)) != CDIN_PROTOCOL_OK) goto fail;
-    if (cdin_backend_frontend_receive(driver, frame, frame_length) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_frontend_pending_events(driver) != 1u) goto fail;
+    if (cdin_protocol_encode_frame(&input_view, frame, sizeof(frame), &frame_length, sizeof(frame)) != CDIN_PROTOCOL_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_receive(driver, frame, frame_length) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_pending_events(driver) != 1u) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     if (cdin_backend_frontend_event_at(driver, 0u, &message) != CDIN_BACKEND_OK ||
         message.type != CDIN_PROTOCOL_INPUT_PASTE || message.payload_length != sizeof(paste_payload) ||
-        memcmp(message.payload, paste_payload, sizeof(paste_payload)) != 0) goto fail;
-    if (cdin_backend_frontend_consume_event(driver) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_frontend_receive(driver, frame, frame_length) != CDIN_BACKEND_INVALID_ARGUMENT) goto fail;
+        memcmp(message.payload, paste_payload, sizeof(paste_payload)) != 0) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_consume_event(driver) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_receive(driver, frame, frame_length) != CDIN_BACKEND_INVALID_ARGUMENT) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
     /* Wire ACK payload references the flush group, not the frame sequence. */
     input_view.sequence = 2u;
     input_view.type = CDIN_PROTOCOL_ACK;
     input_view.payload = ack_payload;
     input_view.payload_length = sizeof(ack_payload);
-    if (cdin_protocol_encode_frame(&input_view, frame, sizeof(frame), &frame_length, sizeof(frame)) != CDIN_PROTOCOL_OK) goto fail;
-    if (cdin_backend_frontend_receive(driver, frame, frame_length) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_frontend_pending(driver) != 0u) goto fail;
+    if (cdin_protocol_encode_frame(&input_view, frame, sizeof(frame), &frame_length, sizeof(frame)) != CDIN_PROTOCOL_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_receive(driver, frame, frame_length) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_pending(driver) != 0u) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
 
     /* When the driver leaves, the oldest attached observer is promoted. */
-    if (cdin_backend_frontend_detach(driver) != CDIN_BACKEND_OK) goto fail;
-    if (!cdin_backend_frontend_can_mutate(observer)) goto fail;
+    if (cdin_backend_frontend_detach(driver) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (!cdin_backend_frontend_can_mutate(observer)) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     outgoing_count = cdin_backend_frontend_pending(observer);
     for (outgoing_index = 0u; outgoing_index < outgoing_count; outgoing_index++) {
-        if (cdin_backend_frontend_message_at(observer, outgoing_index, &message) != CDIN_BACKEND_OK) goto fail;
+        if (cdin_backend_frontend_message_at(observer, outgoing_index, &message) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
         if (message.type != CDIN_BACKEND_MESSAGE_DRIVER_ROLE_CHANGED) continue;
         if (message.sequence == 0u ||
             cdin_protocol_payload_get_uint(message.payload, message.payload_length,
                                            "epoch", &role_epoch) != CDIN_PROTOCOL_OK ||
-            role_epoch != message.sequence) goto fail;
+            role_epoch != message.sequence) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
         role_event_found = 1;
         break;
     }
-    if (!role_event_found) goto fail;
-    if (cdin_backend_frontend_close(driver) != CDIN_BACKEND_OK) goto fail;
+    if (!role_event_found) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_close(driver) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     driver = NULL;
-    if (cdin_backend_frontend_detach(observer) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_frontend_close(observer) != CDIN_BACKEND_OK) goto fail;
+    if (cdin_backend_frontend_detach(observer) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_frontend_close(observer) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     observer = NULL;
 
-    if (cdin_backend_pump(backend, 8u, &processed) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_shutdown(backend, 0) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_get_state(backend) != CDIN_BACKEND_STATE_STOPPED) goto fail;
-    if (cdin_backend_shutdown(backend, 0) != CDIN_BACKEND_OK) goto fail;
-    if (cdin_backend_pump(backend, 1u, &processed) != CDIN_BACKEND_INVALID_STATE) goto fail;
+    if (cdin_backend_pump(backend, 8u, &processed) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_shutdown(backend, 0) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_get_state(backend) != CDIN_BACKEND_STATE_STOPPED) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_shutdown(backend, 0) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
+    if (cdin_backend_pump(backend, 1u, &processed) != CDIN_BACKEND_INVALID_STATE) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     cdin_backend_destroy(backend);
 
     if (!contains(logs->text, "[BACKEND][CORE]")) return 1;
