@@ -397,6 +397,16 @@ static void test_frame_bounds(void)
 
 static void test_direction_and_roles(void)
 {
+    static const uint8_t role_changed[] = {
+        0xa2u, 0x65u, 'e','p','o','c','h', 0x02u,
+        0x66u, 'd','r','i','v','e','r', 0xf5u
+    };
+    assert(strcmp(cdin_protocol_message_name(CDIN_PROTOCOL_DRIVER_ROLE_CHANGED),
+                  "driver.role_changed") == 0);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_DRIVER_ROLE_CHANGED,
+                                          role_changed, sizeof(role_changed)) == CDIN_PROTOCOL_OK);
+    assert(!cdin_protocol_message_is_inbound(CDIN_PROTOCOL_DRIVER_ROLE_CHANGED));
+    assert(!cdin_protocol_message_requires_driver(CDIN_PROTOCOL_DRIVER_ROLE_CHANGED));
     assert(cdin_protocol_message_is_inbound(CDIN_PROTOCOL_INPUT_KEY));
     assert(!cdin_protocol_message_is_inbound(CDIN_PROTOCOL_UI_LAYOUT));
     assert(cdin_protocol_message_requires_driver(CDIN_PROTOCOL_INPUT_PASTE));
