@@ -158,6 +158,11 @@ if(BUILD_TESTING)
         target_compile_options(${target} PRIVATE
             $<$<C_COMPILER_ID:GNU,Clang>:-UNDEBUG;-Wall;-Wextra;-Wshadow;-Wconversion;-Wstrict-prototypes;-Wformat=2;-Wpedantic;-Werror>
             $<$<C_COMPILER_ID:MSVC>:/UNDEBUG>)
+        # POSIX test helpers (mkdtemp, process and filesystem APIs) need the
+        # same feature-test macros as the production Backend on Apple platforms.
+        if(APPLE)
+            target_compile_definitions(${target} PRIVATE _DARWIN_C_SOURCE _POSIX_C_SOURCE=200809L)
+        endif()
     endfunction()
 
     # Codec tests run without an installed Kernel package or Lua development headers.
