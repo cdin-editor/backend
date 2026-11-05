@@ -134,7 +134,24 @@ command events. It never calls Lua from a worker thread. Driver-only mutation
 messages are rejected from Observer clients before queuing; line-window reads
 are available to either attached role.
 
-## 5. Errors and logging
+## 5. Optional filesystem read service
+
+When the Runtime bridge is compiled, `host.fs:read_file(path, options?)` reads
+exact file bytes through Backend-owned filesystem services and returns one
+Lua byte string. It preserves NUL, invalid UTF-8, BOM and line terminators.
+The optional `options.max_bytes` must be a positive integer no greater than
+Backend's configured `max_document_bytes`; the default is that configured
+document limit. A size violation never returns a partial byte string.
+
+This method is additive and optional under Host API 1.x. Runtime startup does
+not require it; the built-in `document.open` command checks for the method and
+returns `UNSUPPORTED` when absent. Read failures retain stable codes:
+`NOT_FOUND` for missing paths, `LIMIT_EXCEEDED` for the bound, `NO_MEMORY`
+for bounded-buffer allocation failures, and `IO_ERROR` for other filesystem
+failures. The implementation uses `cdin_fs_read_chunks`; it does not expose
+native file handles or move file I/O into Runtime.
+
+## 6. Errors and logging
 
 A failed Host operation throws a Lua error table with a stable `code` and
 machine-readable details. Kernel identities such as `STALE_VERSION`,
@@ -144,14 +161,14 @@ machine-readable details. Kernel identities such as `STALE_VERSION`,
 not create a second logger, bind `log.c`, or write Runtime records to stdout.
 Logging failures never change the operation being logged.
 
-## 6. Ownership and threading
+## 7. Ownership and threading
 
 All Host calls that touch Kernel or Lua state run on the Backend owner thread.
 The Backend owns opaque Lua userdata handles; Runtime never receives native
 pointers or Kernel handles. Worker threads may return plain data through the
 Backend completion queue, but must never enter the Lua state.
 
-## 7. Current verification boundary
+## 8. Current verification boundary
 
 Protocol-only and service tests pass in this workspace. The actual Runtime
 repository remains a separate, read-only inspected source tree; the companion
