@@ -377,7 +377,8 @@ static cdin_backend_status protocol_enqueue(cdin_protocol_client *client,
     if (!is_flush_marker) {
         size_t reserved = 0u;
         if (client->pending_flushes < client->server->max_unacked_flushes) reserved++;
-        if ((client->accepted_capabilities & CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS) != 0u) reserved++;
+        if (!client->driver &&
+            (client->accepted_capabilities & CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS) != 0u) reserved++;
         queue_limit = reserved >= queue_limit ? 0u : queue_limit - reserved;
     }
     if (client->queue_count >= queue_limit) {
