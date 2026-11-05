@@ -2,6 +2,7 @@
 #include "cdin/backend/path.h"
 #include "scenario.h"
 
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +24,15 @@ static int capture_chunk(void *context, const uint8_t *bytes, size_t length)
     return 0;
 }
 
+static int fail_read_with_errno(void *context, const uint8_t *bytes, size_t length)
+{
+    int *expected_errno = (int *)context;
+    (void)bytes;
+    (void)length;
+    errno = *expected_errno;
+    return -1;
+}
+
 static int capture_entry(void *context, const cdin_fs_entry *entry)
 {
     size_t *matches = (size_t *)context;
@@ -41,11 +51,15 @@ int main(void)
     char *joined = NULL;
     char *relative = NULL;
     const char source[] = "project: hello\nrevision: 1\n";
+    static const uint8_t binary_source[] = {
+        0xefu, 0xbbu, 0xbfu, 'A', 0x00u, 0xffu, '\r', '\n', 'B', '\n', 'C', '\r'
+    };
     read_capture capture;
     cdin_atomic_writer *writer = NULL;
     cdin_fs_entry info;
     uint64_t total = 0u;
     size_t found = 0u;
+    int callback_errno = ENOMEM;
 
     SCENARIO_CHECK(scenario_temp_directory(directory, sizeof(directory)) == 0);
     SCENARIO_CHECK(cdin_path_normalize("./workspace/notes/../draft.cdin", &normalized) == 0);
@@ -83,6 +97,32 @@ int main(void)
     SCENARIO_CHECK(memcmp(capture.bytes, source, capture.length) == 0);
     SCENARIO_CHECK(cdin_fs_stat(file, &info) == 0);
     SCENARIO_CHECK(info.type == CDIN_FS_FILE && info.size == total);
+
+    /* The same reader is binary-safe: BOM, NUL, invalid UTF-8 and EOL bytes
+     * must survive arbitrary chunk boundaries without normalization. */
+    SCENARIO_CHECK(cdin_fs_begin_atomic_write(file, 128u, 1, &writer) == 0);
+    SCENARIO_CHECK(cdin_fs_write_chunk(writer, binary_source, sizeof(binary_source)) == 0);
+    SCENARIO_CHECK(cdin_fs_commit_atomic_write(writer) == 0);
+    writer = NULL;
+    memset(&capture, 0, sizeof(capture));
+    SCENARIO_CHECK(cdin_fs_read_chunks(file, 3u, 128u, capture_chunk, &capture, &total) == 0);
+    SCENARIO_CHECK(total == sizeof(binary_source));
+    SCENARIO_CHECK(capture.length == sizeof(binary_source));
+    SCENARIO_CHECK(memcmp(capture.bytes, binary_source, sizeof(binary_source)) == 0);
+
+    /* A size violation fails atomically: no partial count is reported. */
+    errno = 0;
+    total = 99u;
+    SCENARIO_CHECK(cdin_fs_read_chunks(file, 3u, 5u, capture_chunk, &capture, &total) != 0);
+    SCENARIO_CHECK(errno == EFBIG);
+    SCENARIO_CHECK(total == 0u);
+
+    /* Callback-specific failures must survive fclose/free cleanup unchanged. */
+    errno = 0;
+    SCENARIO_CHECK(cdin_fs_read_chunks(file, 3u, 128u, fail_read_with_errno,
+                                       &callback_errno, &total) != 0);
+    SCENARIO_CHECK(errno == callback_errno);
+
     SCENARIO_CHECK(cdin_fs_list_directory(directory, capture_entry, &found) == 0);
     SCENARIO_CHECK(found == 1u);
 
@@ -90,6 +130,9 @@ int main(void)
     SCENARIO_CHECK(strcmp(relative, "workspace.cdin") == 0);
     free(relative);
     SCENARIO_CHECK(scenario_remove_file(file) == 0);
+    errno = 0;
+    SCENARIO_CHECK(cdin_fs_read_chunks(file, 4u, 128u, capture_chunk, &capture, &total) != 0);
+    SCENARIO_CHECK(errno == ENOENT);
     SCENARIO_CHECK(scenario_remove_directory(directory) == 0);
     (void)puts("PASS platform_file_workflow: atomic save, bounded streaming, path and filesystem edge cases");
     return 0;
