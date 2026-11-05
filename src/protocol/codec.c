@@ -358,6 +358,9 @@ static const field_rule schema_selection[] = {
     RULE("view_id", FIELD_TEXT), RULE("version", FIELD_UINT),
     RULE("anchor", FIELD_UINT), RULE("caret", FIELD_UINT)
 };
+static const field_rule schema_driver_role_changed[] = {
+    RULE("epoch", FIELD_UINT), RULE("driver", FIELD_BOOL)
+};
 
 static int cbor_validate_string_array(const uint8_t *data, size_t length)
 {
@@ -952,6 +955,7 @@ cdin_protocol_status cdin_protocol_validate_payload(cdin_protocol_message_type t
     case CDIN_PROTOCOL_UI_CURSOR: valid = VALIDATE(schema_cursor); break;
     case CDIN_PROTOCOL_UI_SELECTION: valid = VALIDATE(schema_selection); break;
     case CDIN_PROTOCOL_UI_FLUSH: valid = VALIDATE(schema_ui_flush); break;
+    case CDIN_PROTOCOL_DRIVER_ROLE_CHANGED: valid = VALIDATE(schema_driver_role_changed); break;
     case CDIN_PROTOCOL_DETACH_ACK: {
         cbor_cursor cursor = { payload, payload_length, 0u };
         uint8_t major;
@@ -1116,6 +1120,7 @@ const char *cdin_protocol_message_name(cdin_protocol_message_type type)
     case CDIN_PROTOCOL_UI_FLUSH: return "ui.flush";
     case CDIN_PROTOCOL_HELLO_ACK: return "hello_ack";
     case CDIN_PROTOCOL_DETACH_ACK: return "detach_ack";
+    case CDIN_PROTOCOL_DRIVER_ROLE_CHANGED: return "driver.role_changed";
     case CDIN_PROTOCOL_HELLO: return "hello";
     case CDIN_PROTOCOL_ATTACH: return "attach";
     case CDIN_PROTOCOL_DETACH: return "detach";
