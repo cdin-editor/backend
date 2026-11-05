@@ -70,6 +70,10 @@ cdin_backend_status cdin_backend_frontend_flush(cdin_backend_frontend *frontend,
 cdin_backend_status cdin_backend_frontend_ack(cdin_backend_frontend *frontend,
                                                 uint64_t sequence);
 size_t cdin_backend_frontend_pending(const cdin_backend_frontend *frontend);
+/* Remove the oldest non-flush control reply after the transport has written
+ * it successfully. Flush-group messages are removed only by ACK. */
+cdin_backend_status cdin_backend_frontend_consume_control_message(
+    cdin_backend_frontend *frontend);
 cdin_backend_status cdin_backend_frontend_message_at(const cdin_backend_frontend *frontend,
                                                        size_t index,
                                                        cdin_backend_message *out_message);
