@@ -9,6 +9,7 @@
 typedef int lua_host_protocol_disabled_translation_unit;
 #else
 #include "lua_host_internal.h"
+#include "ui_snapshot_budget.h"
 #include "../protocol/server.h"
 #include <cdin/protocol.h>
 
@@ -684,15 +685,15 @@ static void free_ui_messages(ui_message *messages, size_t count)
 /* Bound the complete semantic revision, not just each individual CBOR frame.
  * Keep room for the final ui.flush envelope so one model cannot consume more
  * than the negotiated per-client message budget across its entire batch. */
-static int ui_messages_fit_budget(const ui_message *messages, size_t count, size_t limit)
+static int ui_messages_fit_budget(const ui_message *messages, size_t count,
+                                   size_t max_message_bytes, size_t max_snapshot_bytes)
 {
     size_t index;
     size_t total = 0u;
-    size_t budget = limit > 48u ? limit - 48u : 0u;
-    if (messages == NULL || budget == 0u) return 0;
+    if (messages == NULL) return 0;
     for (index = 0u; index < count; index++) {
-        if (messages[index].payload.length > budget - total) return 0;
-        total += messages[index].payload.length;
+        if (!cdin_ui_snapshot_budget_add(&total, messages[index].payload.length,
+                                         max_message_bytes, max_snapshot_bytes)) return 0;
     }
     return 1;
 }
@@ -710,6 +711,7 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
     size_t view_count = 0u, panel_count = 0u, message_count = 0u, capacity;
     size_t index;
     size_t limit = (size_t)host->backend->config.max_message_bytes;
+    size_t snapshot_limit = (size_t)host->backend->config.max_snapshot_bytes;
     ui_message *messages = NULL;
     cdin_protocol_message *batch = NULL;
     uint64_t flush_sequence = 0u;
@@ -749,7 +751,7 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
     if (messages == NULL || batch == NULL) { status = CDIN_BACKEND_NO_MEMORY; goto done; }
 
     if (!build_options_message(L, model, theme, theme_length, revision, messages, capacity, &message_count, limit) ||
-        !ui_messages_fit_budget(messages, message_count, limit)) {
+        !ui_messages_fit_budget(messages, message_count, limit, snapshot_limit)) {
         status = CDIN_BACKEND_LIMIT_EXCEEDED; goto done;
     }
     lua_getfield(L, model, "styles");
@@ -776,13 +778,13 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
         }
         buffer_free(&revision_value); buffer_free(&payload);
     }
-    if (!ui_messages_fit_budget(messages, message_count, limit)) {
+    if (!ui_messages_fit_budget(messages, message_count, limit, snapshot_limit)) {
         status = CDIN_BACKEND_LIMIT_EXCEEDED; goto done;
     }
     if (!build_layout_message(L, model, revision, messages, capacity, &message_count, limit) ||
         !build_simple_model_message(L, model, revision, "status", CDIN_PROTOCOL_UI_STATUSLINE,
                                     messages, capacity, &message_count, limit) ||
-        !ui_messages_fit_budget(messages, message_count, limit)) {
+        !ui_messages_fit_budget(messages, message_count, limit, snapshot_limit)) {
         status = CDIN_BACKEND_LIMIT_EXCEEDED; goto done;
     }
     {
@@ -803,7 +805,7 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
         }
         buffer_free(&revision_value); buffer_free(&prompt_value); buffer_free(&payload);
     }
-    if (!ui_messages_fit_budget(messages, message_count, limit)) {
+    if (!ui_messages_fit_budget(messages, message_count, limit, snapshot_limit)) {
         status = CDIN_BACKEND_LIMIT_EXCEEDED; goto done;
     }
 
@@ -830,7 +832,7 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
             }
         }
         lua_pop(L, 1);
-        if (!ui_messages_fit_budget(messages, message_count, limit)) {
+        if (!ui_messages_fit_budget(messages, message_count, limit, snapshot_limit)) {
             status = CDIN_BACKEND_LIMIT_EXCEEDED; goto done;
         }
     }
@@ -843,7 +845,7 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
             lua_pop(L, 1); status = CDIN_BACKEND_INVALID_ARGUMENT; goto done;
         }
         lua_pop(L, 1);
-        if (!ui_messages_fit_budget(messages, message_count, limit)) {
+        if (!ui_messages_fit_budget(messages, message_count, limit, snapshot_limit)) {
             status = CDIN_BACKEND_LIMIT_EXCEEDED; goto done;
         }
     }
