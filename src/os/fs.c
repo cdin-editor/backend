@@ -68,25 +68,35 @@ int cdin_fs_read_chunks(const char *path, size_t chunk_size, uint64_t max_bytes,
     uint8_t *buffer = NULL;
     uint64_t total = 0u;
     int result = -1;
-    if (path == NULL || callback == NULL || chunk_size == 0u || max_bytes == 0u) return -1;
+    int failure_errno = 0;
+    if (path == NULL || callback == NULL || chunk_size == 0u || max_bytes == 0u) {
+        errno = EINVAL;
+        return -1;
+    }
     if (out_total != NULL) *out_total = 0u;
     file = cdin_fopen_utf8(path, "rb");
-    if (file == NULL) goto done;
+    if (file == NULL) { failure_errno = errno; goto done; }
     buffer = (uint8_t *)malloc(chunk_size);
-    if (buffer == NULL) goto done;
+    if (buffer == NULL) { failure_errno = ENOMEM; goto done; }
     for (;;) {
         size_t count = fread(buffer, 1u, chunk_size, file);
         if (count != 0u) {
-            if ((uint64_t)count > max_bytes - total) { errno = EFBIG; goto done; }
+            if ((uint64_t)count > max_bytes - total) {
+                failure_errno = EFBIG;
+                goto done;
+            }
             total += (uint64_t)count;
             errno = 0;
             if (callback(context, buffer, count) != 0) {
-                if (errno == 0) errno = ECANCELED;
+                failure_errno = errno != 0 ? errno : ECANCELED;
                 goto done;
             }
         }
         if (count < chunk_size) {
-            if (ferror(file)) goto done;
+            if (ferror(file)) {
+                failure_errno = errno != 0 ? errno : EIO;
+                goto done;
+            }
             break;
         }
     }
@@ -94,7 +104,11 @@ int cdin_fs_read_chunks(const char *path, size_t chunk_size, uint64_t max_bytes,
     result = 0;
 done:
     free(buffer);
-    if (file != NULL && fclose(file) != 0 && result == 0) result = -1;
+    if (file != NULL && fclose(file) != 0 && result == 0) {
+        result = -1;
+        failure_errno = errno != 0 ? errno : EIO;
+    }
+    if (result != 0) errno = failure_errno != 0 ? failure_errno : EIO;
     return result;
 }
 
