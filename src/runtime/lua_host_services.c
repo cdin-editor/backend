@@ -20,9 +20,11 @@ static int lua_fs_read_capture_chunk(void *opaque, const uint8_t *bytes, size_t 
     size_t required;
     size_t next;
     uint8_t *grown;
-    if (capture == NULL || (bytes == NULL && length != 0u) ||
-        (uint64_t)length > capture->maximum - (uint64_t)capture->length ||
-        length > SIZE_MAX - capture->length) return -1;
+    if (capture == NULL || (bytes == NULL && length != 0u)) { errno = EINVAL; return -1; }
+    if ((uint64_t)length > capture->maximum - (uint64_t)capture->length) {
+        errno = EFBIG; return -1;
+    }
+    if (length > SIZE_MAX - capture->length) { errno = EOVERFLOW; return -1; }
     required = capture->length + length;
     if (required > capture->capacity) {
         next = capture->capacity;
@@ -40,7 +42,7 @@ static int lua_fs_read_capture_chunk(void *opaque, const uint8_t *bytes, size_t 
         }
         if (next < required) return -1;
         grown = (uint8_t *)realloc(capture->bytes, next);
-        if (grown == NULL) return -1;
+        if (grown == NULL) { errno = ENOMEM; return -1; }
         capture->bytes = grown;
         capture->capacity = next;
     }
@@ -56,13 +58,17 @@ static int lua_fs_read_capture_chunk(void *opaque, const uint8_t *bytes, size_t 
 int lua_fs_read_file(lua_State *L)
 {
     cdin_lua_host *host = (cdin_lua_host *)lua_touserdata(L, lua_upvalueindex(1));
-    const char *path = luaL_checkstring(L, 2);
+    size_t path_length;
+    const char *path = luaL_checklstring(L, 2, &path_length);
     uint64_t maximum;
     uint64_t total = 0u;
     lua_fs_read_capture capture;
     static const char empty[] = "";
     int status;
-    if (host == NULL || host->backend == NULL) return raise_argument(L, "fs.read_file");
+    if (host == NULL || host->backend == NULL ||
+        memchr(path, '\0', path_length) != NULL) {
+        return raise_argument(L, "fs.read_file");
+    }
     maximum = host->backend->config.max_document_bytes;
     if (maximum == 0u || maximum > (uint64_t)LUA_MAXINTEGER) maximum = (uint64_t)LUA_MAXINTEGER;
     if (maximum > (uint64_t)SIZE_MAX) maximum = (uint64_t)SIZE_MAX;
@@ -80,11 +86,13 @@ int lua_fs_read_file(lua_State *L)
     }
     memset(&capture, 0, sizeof(capture));
     capture.maximum = maximum;
+    errno = 0;
     status = cdin_fs_read_chunks(path, 65536u, maximum,
                                  lua_fs_read_capture_chunk, &capture, &total);
     if (status != 0) {
+        int failure = errno;
         free(capture.bytes);
-        return raise_io(L, "fs.read_file");
+        return raise_fs_read_error(L, failure);
     }
     if (total != (uint64_t)capture.length) {
         free(capture.bytes);
