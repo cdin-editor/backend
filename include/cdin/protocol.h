@@ -20,6 +20,8 @@ extern "C" {
 #define CDIN_PROTOCOL_FRAME_PREFIX_BYTES 4u
 #define CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES (1024u * 1024u)
 #define CDIN_PROTOCOL_MAX_DEPTH 32u
+#define CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS (UINT64_C(1) << 9u)
+#define CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS_NAME "driver-role-events/1"
 
 typedef enum cdin_protocol_status {
     CDIN_PROTOCOL_OK = 0,
@@ -54,6 +56,7 @@ typedef enum cdin_protocol_message_type {
     CDIN_PROTOCOL_UI_FLUSH = 16,
     CDIN_PROTOCOL_HELLO_ACK = 17,
     CDIN_PROTOCOL_DETACH_ACK = 18,
+    CDIN_PROTOCOL_DRIVER_ROLE_CHANGED = 19,
 
     /* Frontend -> Backend. */
     CDIN_PROTOCOL_HELLO = 64,
