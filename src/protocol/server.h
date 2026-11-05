@@ -67,6 +67,7 @@ cdin_backend_status cdin_protocol_publish_snapshot(cdin_protocol_client *client,
 cdin_backend_status cdin_protocol_flush(cdin_protocol_client *client, uint64_t *out_sequence);
 cdin_backend_status cdin_protocol_ack(cdin_protocol_client *client, uint64_t sequence);
 size_t cdin_protocol_pending_messages(const cdin_protocol_client *client);
+cdin_backend_status cdin_protocol_consume_control_message(cdin_protocol_client *client);
 cdin_backend_status cdin_protocol_message_at(const cdin_protocol_client *client,
                                                size_t index, cdin_protocol_message *out_message);
 cdin_backend_status cdin_protocol_receive(cdin_protocol_client *client,
