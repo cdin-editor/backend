@@ -608,6 +608,19 @@ size_t cdin_protocol_pending_messages(const cdin_protocol_client *client)
     return client == NULL || client->closed ? 0u : client->queue_count;
 }
 
+cdin_backend_status cdin_protocol_consume_control_message(cdin_protocol_client *client)
+{
+    if (client == NULL || client->closed) return CDIN_BACKEND_INVALID_ARGUMENT;
+    if (client->queue_count == 0u) return CDIN_BACKEND_NOT_FOUND;
+    if (client->queue[0].flush_sequence != 0u ||
+        (client->queue[0].type != CDIN_PROTOCOL_HELLO_ACK &&
+         client->queue[0].type != CDIN_PROTOCOL_DETACH_ACK)) {
+        return CDIN_BACKEND_INVALID_STATE;
+    }
+    cdin_protocol_remove_item(client, 0u);
+    return CDIN_BACKEND_OK;
+}
+
 cdin_backend_status cdin_protocol_message_at(const cdin_protocol_client *client,
                                                size_t index, cdin_protocol_message *out_message)
 {
