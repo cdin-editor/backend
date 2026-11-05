@@ -139,6 +139,7 @@ int lua_doc_drain(lua_State *L);
 int lua_doc_search(lua_State *L);
 
 /* Reusable OS-service callbacks and userdata finalizers. */
+int lua_fs_read_file(lua_State *L);
 int lua_fs_begin_atomic_write(lua_State *L);
 int lua_fs_write_chunk(lua_State *L);
 int lua_fs_commit_atomic_write(lua_State *L);
