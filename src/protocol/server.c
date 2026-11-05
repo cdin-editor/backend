@@ -318,6 +318,11 @@ static cdin_backend_status protocol_enqueue(cdin_protocol_client *client,
     size_t queue_limit;
     int handshake_reply;
     if (client == NULL || message == NULL || client->closed) return CDIN_BACKEND_INVALID_ARGUMENT;
+    if (message->type == CDIN_PROTOCOL_DRIVER_ROLE_CHANGED) {
+        if ((client->accepted_capabilities & CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS) == 0u)
+            return CDIN_BACKEND_UNSUPPORTED;
+        if (client->role_event_pending) return CDIN_BACKEND_BUSY;
+    }
     handshake_reply = (message->type == CDIN_PROTOCOL_HELLO_ACK ||
                        message->type == CDIN_PROTOCOL_DETACH_ACK);
     if (!cdin_protocol_client_is_attached(client) &&
