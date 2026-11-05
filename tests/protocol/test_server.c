@@ -165,6 +165,29 @@ static void test_queue_flush_ack_and_inbound(void)
     assert(cdin_protocol_client_close(driver) == CDIN_BACKEND_OK);
     assert(cdin_protocol_client_close(observer) == CDIN_BACKEND_OK);
     cdin_protocol_server_destroy(server);
+
+    /* A legacy observer that did not request the capability remains wire-compatible:
+     * the Backend promotes its lease but emits no new core message. */
+    server = NULL;
+    driver = NULL;
+    observer = NULL;
+    hello.capabilities = 0u;
+    hello.frontend_name = "legacy-driver";
+    assert(cdin_protocol_server_create(2u, 4u, 2u, 0x55667788u,
+                                       CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS,
+                                       1024u, NULL, NULL, &server) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_client_open(server, &driver) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_hello_accept(driver, &hello, &ack) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_attach(driver) == CDIN_BACKEND_OK);
+    hello.frontend_name = "legacy-observer";
+    assert(cdin_protocol_client_open(server, &observer) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_hello_accept(observer, &hello, &ack) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_attach(observer) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_client_close(driver) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_can_mutate(observer));
+    assert(cdin_protocol_pending_messages(observer) == 0u);
+    assert(cdin_protocol_client_close(observer) == CDIN_BACKEND_OK);
+    cdin_protocol_server_destroy(server);
 }
 
 static void test_atomic_ui_batch(void)
