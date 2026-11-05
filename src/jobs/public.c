@@ -10,7 +10,7 @@
 int cdin_backend_job_pool_create(size_t worker_count, size_t capacity,
                                  cdin_backend_job_pool **out_pool)
 {
-    return cdin_job_pool_create(worker_count, capacity, (cdin_job_pool **)out_pool);
+    return cdin_job_pool_create(worker_count, capacity, NULL, NULL, (cdin_job_pool **)out_pool);
 }
 
 int cdin_backend_job_submit(cdin_backend_job_pool *pool,
