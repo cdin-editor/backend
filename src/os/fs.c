@@ -79,7 +79,11 @@ int cdin_fs_read_chunks(const char *path, size_t chunk_size, uint64_t max_bytes,
         if (count != 0u) {
             if ((uint64_t)count > max_bytes - total) { errno = EFBIG; goto done; }
             total += (uint64_t)count;
-            if (callback(context, buffer, count) != 0) { errno = ECANCELED; goto done; }
+            errno = 0;
+            if (callback(context, buffer, count) != 0) {
+                if (errno == 0) errno = ECANCELED;
+                goto done;
+            }
         }
         if (count < chunk_size) {
             if (ferror(file)) goto done;
