@@ -283,7 +283,8 @@ static const field_rule schema_hello[] = {
 };
 static const field_rule schema_hello_ack[] = {
     RULE("major", FIELD_UINT), RULE("minor", FIELD_UINT), RULE("session_id", FIELD_UINT),
-    RULE("client_id", FIELD_UINT), RULE("driver", FIELD_BOOL), RULE("accepted_capabilities", FIELD_ARRAY)
+    RULE("client_id", FIELD_UINT), RULE("driver", FIELD_BOOL), RULE("accepted_capabilities", FIELD_ARRAY),
+    OPT("driver_role_epoch", FIELD_UINT)
 };
 static const field_rule schema_attach[] = {
     RULE("session_id", FIELD_UINT), RULE("units", FIELD_TEXT), RULE("width", FIELD_UINT), RULE("height", FIELD_UINT)
