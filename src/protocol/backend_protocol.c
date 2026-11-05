@@ -140,6 +140,7 @@ static int role_event_capability_requested(const uint8_t *array, size_t length)
     size_t offset = 0u;
     uint64_t count;
     uint64_t index;
+    int found = 0;
     uint8_t initial;
     if (array == NULL || length == 0u) return 0;
     initial = array[offset++];
@@ -184,11 +185,10 @@ static int role_event_capability_requested(const uint8_t *array, size_t length)
         if (text_length > (uint64_t)(length - offset)) return 0;
         if (text_length == strlen(CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS_NAME) &&
             memcmp(array + offset, CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS_NAME,
-                   (size_t)text_length) == 0) return 1;
+                   (size_t)text_length) == 0) found = 1;
         offset += (size_t)text_length;
     }
-    (void)offset;
-    return 0;
+    return offset == length ? found : 0;
 }
 
 static cdin_backend_status queue_hello_ack(cdin_backend_frontend *frontend,
