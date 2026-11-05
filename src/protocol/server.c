@@ -30,7 +30,6 @@ struct cdin_protocol_server {
     uint64_t supported_capabilities;
     uint64_t next_client_id;
     uint64_t driver_client_id;
-    uint64_t driver_role_epoch;
     cdin_protocol_client **clients;
     cdin_protocol_diagnostic_fn diagnostic;
     void *diagnostic_context;
@@ -209,13 +208,11 @@ cdin_backend_status cdin_protocol_hello_accept(cdin_protocol_client *client,
     /* The role is returned in HELLO_ACK, so reserve the first negotiated
      * client as driver before replying. ATTACH activates that reservation. */
     if (client->server->driver_client_id == 0u) {
-        if (client->server->driver_role_epoch == UINT64_MAX) return CDIN_BACKEND_LIMIT_EXCEEDED;
-        client->server->driver_role_epoch++;
         client->server->driver_client_id = client->id;
         client->driver = 1;
     }
     ack->driver = client->driver;
-    ack->driver_role_epoch = client->server->driver_role_epoch;
+    ack->driver_role_epoch = client->next_message_sequence + 1u;
     cdin_protocol_log(client->server, CDIN_BACKEND_LOG_DEBUG, "hello_accepted", client->id,
                       CDIN_BACKEND_OK, ack->accepted_capabilities);
     return CDIN_BACKEND_OK;
@@ -260,7 +257,7 @@ cdin_backend_status cdin_protocol_detach(cdin_protocol_client *client)
         cdin_backend_status promotion_status = promote_oldest_observer(server);
         if (promotion_status != CDIN_BACKEND_OK) {
             cdin_protocol_log(server, CDIN_BACKEND_LOG_ERROR, "driver_role_event_failed",
-                              0u, promotion_status, server->driver_role_epoch);
+                              client->id, promotion_status, client->next_message_sequence);
             return promotion_status;
         }
     }
