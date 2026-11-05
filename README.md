@@ -42,7 +42,7 @@ Kernel header.
 
 ## Current status
 
-This repository contains Backend library version 1.0.0, the shared Frontend Protocol 1.0.0
+This repository contains Backend library version 1.0.2, the shared Frontend Protocol 1.0.0
 codec/server, reusable OS/job services, Kernel adapter, PUC Lua 5.4 bridge,
 Runtime UI-model projection, owner-thread inbound event dispatcher,
 version-pinned line-read service, Headless Frontend harness and integration
@@ -146,7 +146,7 @@ private logger link requirements together.
   detail translation.
 - A Runtime Host bridge, with Lua state owned by the Backend's creating thread.
 - Bounded worker queues and owner-thread completion delivery.
-- Portable path, filesystem, clock, thread and argument-vector process services.
+- Portable path, bounded binary-safe file reads, atomic filesystem writes, clock, thread and argument-vector process services.
 - In-process Frontend handshake, Driver/Observer roles, bounded input/output
   queues, atomic UI snapshots, `ui.flush` groups, acknowledgements and backpressure.
 - Runtime UI Model projection and owner-thread inbound event dispatch.
