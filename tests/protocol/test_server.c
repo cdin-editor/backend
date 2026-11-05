@@ -307,12 +307,65 @@ static void test_flush_slot_is_reserved(void)
     cdin_protocol_server_destroy(server);
 }
 
+static void test_driver_role_notification_is_capability_gated(void)
+{
+    cdin_protocol_server *server = NULL;
+    cdin_protocol_client *driver = NULL;
+    cdin_protocol_client *observer = NULL;
+    cdin_protocol_hello hello;
+    cdin_protocol_hello_ack ack;
+    cdin_protocol_message event;
+    uint64_t epoch = 0u;
+    int is_driver = 0;
+
+    assert(cdin_protocol_server_create(2u, 4u, 2u, 0x11223344u,
+                                       CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS,
+                                       1024u, NULL, NULL, &server) == CDIN_BACKEND_OK);
+    memset(&hello, 0, sizeof(hello));
+    hello.major = CDIN_PROTOCOL_VERSION_MAJOR;
+    hello.minor = CDIN_PROTOCOL_VERSION_MINOR;
+    hello.capabilities = CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS;
+    hello.frontend_name = "role-driver";
+    assert(cdin_protocol_client_open(server, &driver) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_hello_accept(driver, &hello, &ack) == CDIN_BACKEND_OK);
+    assert(ack.driver == 1 && ack.driver_role_epoch == 1u);
+    assert(cdin_protocol_attach(driver) == CDIN_BACKEND_OK);
+
+    hello.frontend_name = "role-observer";
+    assert(cdin_protocol_client_open(server, &observer) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_hello_accept(observer, &hello, &ack) == CDIN_BACKEND_OK);
+    assert(ack.driver == 0 && ack.driver_role_epoch == 1u);
+    assert(cdin_protocol_attach(observer) == CDIN_BACKEND_OK);
+    assert(!cdin_protocol_can_mutate(observer));
+    assert(cdin_protocol_pending_messages(observer) == 0u);
+
+    assert(cdin_protocol_client_close(driver) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_can_mutate(observer));
+    assert(cdin_protocol_pending_messages(observer) == 1u);
+    assert(cdin_protocol_message_at(observer, 0u, &event) == CDIN_BACKEND_OK);
+    assert(event.type == CDIN_PROTOCOL_DRIVER_ROLE_CHANGED);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_DRIVER_ROLE_CHANGED,
+                                          event.payload, event.payload_length) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_payload_get_uint(event.payload, event.payload_length,
+                                           "epoch", &epoch) == CDIN_PROTOCOL_OK);
+    assert(epoch == 2u);
+    assert(cdin_protocol_payload_get_bool(event.payload, event.payload_length,
+                                           "driver", &is_driver) == CDIN_PROTOCOL_OK);
+    assert(is_driver == 1);
+    assert(cdin_protocol_consume_control_message(observer) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_pending_messages(observer) == 0u);
+
+    assert(cdin_protocol_client_close(observer) == CDIN_BACKEND_OK);
+    cdin_protocol_server_destroy(server);
+}
+
 int main(void)
 {
     test_hello_ack_assigns_driver_role();
+    test_driver_role_notification_is_capability_gated();
     test_queue_flush_ack_and_inbound();
     test_flush_slot_is_reserved();
     test_atomic_ui_batch();
-    puts("PASS protocol server: single-driver permissions, stable promotion, schema validation, coalescing, atomic UI batch, flush marker, ACK and binary event queue");
+    puts("PASS protocol server: single-driver permissions, negotiated driver-role events, stable promotion, schema validation, coalescing, atomic UI batch, flush marker, ACK and binary event queue");
     return 0;
 }
