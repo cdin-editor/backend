@@ -284,7 +284,7 @@ cdin_backend_status cdin_protocol_client_close(cdin_protocol_client *client)
         promotion_status = promote_oldest_observer(server);
         if (promotion_status != CDIN_BACKEND_OK) {
             cdin_protocol_log(server, CDIN_BACKEND_LOG_ERROR, "driver_role_event_failed",
-                              0u, promotion_status, server->driver_role_epoch);
+                              client->id, promotion_status, client->next_message_sequence);
             return promotion_status;
         }
     }
@@ -452,8 +452,6 @@ static cdin_backend_status promote_oldest_observer(cdin_protocol_server *server)
     size_t index;
     cdin_backend_status status;
     if (server == NULL) return CDIN_BACKEND_INVALID_ARGUMENT;
-    if (server->driver_role_epoch == UINT64_MAX) return CDIN_BACKEND_LIMIT_EXCEEDED;
-    server->driver_role_epoch++;
     server->driver_client_id = 0u;
     for (index = 0u; index < server->max_clients; index++) {
         cdin_protocol_client *candidate = server->clients[index];
@@ -461,9 +459,10 @@ static cdin_backend_status promote_oldest_observer(cdin_protocol_server *server)
             (oldest == NULL || candidate->id < oldest->id)) oldest = candidate;
     }
     if (oldest == NULL) return CDIN_BACKEND_OK;
+    if (oldest->next_message_sequence == UINT64_MAX) return CDIN_BACKEND_LIMIT_EXCEEDED;
     oldest->driver = 1;
     server->driver_client_id = oldest->id;
-    status = queue_driver_role_event(oldest, server->driver_role_epoch);
+    status = queue_driver_role_event(oldest, oldest->next_message_sequence + 1u);
     if (status != CDIN_BACKEND_OK) {
         /* Never grant an unobservable lease to a negotiated Frontend. The
          * session stays fail-closed and a subsequent HELLO can acquire it. */
