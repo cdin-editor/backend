@@ -94,6 +94,7 @@ static int test_running_session_and_protocol(log_capture *logs)
     cdin_thread thread;
     wrong_thread_call wrong_thread;
     uint64_t flush_sequence = 0u;
+    uint64_t role_epoch = 0u;
     size_t processed = 0u;
     const uint8_t first_payload[] = { 0xa2u, 0x66u, 'l','a','y','o','u','t', 0xa2u,
                                       0x64u, 'r','o','o','t', 0xf6u,
@@ -176,6 +177,7 @@ static int test_running_session_and_protocol(log_capture *logs)
     hello.minor = CDIN_BACKEND_PROTOCOL_MINOR;
     if (cdin_backend_frontend_hello(driver, &hello, &ack) != CDIN_BACKEND_OK) goto fail;
     if (ack.session_id == 0u || ack.client_id == 0u) goto fail;
+    if ((ack.accepted_capabilities & CDIN_BACKEND_CAP_DRIVER_ROLE_EVENTS) == 0u) goto fail;
     if (cdin_backend_frontend_attach(driver) != CDIN_BACKEND_OK) goto fail;
     if (!cdin_backend_frontend_can_mutate(driver)) goto fail;
 
@@ -257,6 +259,13 @@ static int test_running_session_and_protocol(log_capture *logs)
     /* When the driver leaves, the oldest attached observer is promoted. */
     if (cdin_backend_frontend_detach(driver) != CDIN_BACKEND_OK) goto fail;
     if (!cdin_backend_frontend_can_mutate(observer)) goto fail;
+    if (cdin_backend_frontend_pending(observer) != 1u) goto fail;
+    if (cdin_backend_frontend_message_at(observer, 0u, &message) != CDIN_BACKEND_OK ||
+        message.type != CDIN_BACKEND_MESSAGE_DRIVER_ROLE_CHANGED || message.sequence == 0u) goto fail;
+    if (cdin_protocol_payload_get_uint(message.payload, message.payload_length,
+                                       "epoch", &role_epoch) != CDIN_PROTOCOL_OK ||
+        role_epoch != message.sequence) goto fail;
+    if (cdin_backend_frontend_consume_control_message(observer) != CDIN_BACKEND_OK) goto fail;
     if (cdin_backend_frontend_close(driver) != CDIN_BACKEND_OK) goto fail;
     driver = NULL;
     if (cdin_backend_frontend_detach(observer) != CDIN_BACKEND_OK) goto fail;
