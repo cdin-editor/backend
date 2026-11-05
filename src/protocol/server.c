@@ -196,10 +196,9 @@ cdin_backend_status cdin_protocol_hello_accept(cdin_protocol_client *client,
     ack->session_id = client->server->session_id;
     /* The role is returned in HELLO_ACK, so reserve the first negotiated
      * client as driver before replying. ATTACH activates that reservation. */
-    if (client->server->driver_client_id == 0u && client->driver) {
+    if (client->server->driver_client_id == 0u) {
         client->server->driver_client_id = client->id;
-    } else if (client->server->driver_client_id != client->id) {
-        client->driver = 0;
+        client->driver = 1;
     }
     ack->driver = client->driver;
     cdin_protocol_log(client->server, CDIN_BACKEND_LOG_DEBUG, "hello_accepted", client->id,
@@ -213,9 +212,10 @@ cdin_backend_status cdin_protocol_attach(cdin_protocol_client *client)
     if (!client->greeted) return CDIN_BACKEND_INVALID_STATE;
     if (client->attached) return CDIN_BACKEND_INVALID_STATE;
     client->attached = 1;
-    if (client->server->driver_client_id == 0u) {
+    if (client->server->driver_client_id == 0u && client->driver) {
         client->server->driver_client_id = client->id;
-        client->driver = 1;
+    } else if (client->server->driver_client_id != client->id) {
+        client->driver = 0;
     }
     cdin_protocol_log(client->server, CDIN_BACKEND_LOG_INFO, "client_attached", client->id,
                       CDIN_BACKEND_OK, (uint64_t)(client->driver != 0));
