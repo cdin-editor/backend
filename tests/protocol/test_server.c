@@ -40,6 +40,41 @@ static cdin_protocol_client *new_attached(cdin_protocol_server *server,
     return client;
 }
 
+static void test_hello_ack_assigns_driver_role(void)
+{
+    cdin_protocol_server *server = NULL;
+    cdin_protocol_client *first = NULL;
+    cdin_protocol_client *second = NULL;
+    cdin_protocol_hello hello;
+    cdin_protocol_hello_ack first_ack;
+    cdin_protocol_hello_ack second_ack;
+
+    assert(cdin_protocol_server_create(2u, 4u, 2u, 0x11223344u, 0u,
+                                       1024u, NULL, NULL, &server) == CDIN_BACKEND_OK);
+    memset(&hello, 0, sizeof(hello));
+    hello.major = CDIN_PROTOCOL_VERSION_MAJOR;
+    hello.minor = CDIN_PROTOCOL_VERSION_MINOR;
+    hello.frontend_name = "first-driver";
+    assert(cdin_protocol_client_open(server, &first) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_hello_accept(first, &hello, &first_ack) == CDIN_BACKEND_OK);
+    assert(first_ack.driver == 1);
+
+    hello.frontend_name = "second-observer";
+    assert(cdin_protocol_client_open(server, &second) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_hello_accept(second, &hello, &second_ack) == CDIN_BACKEND_OK);
+    assert(second_ack.driver == 0);
+
+    assert(cdin_protocol_attach(first) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_attach(second) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_can_mutate(first));
+    assert(!cdin_protocol_can_mutate(second));
+
+    assert(cdin_protocol_client_close(first) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_can_mutate(second));
+    assert(cdin_protocol_client_close(second) == CDIN_BACKEND_OK);
+    cdin_protocol_server_destroy(server);
+}
+
 static void test_queue_flush_ack_and_inbound(void)
 {
     static const uint8_t layout_v1[] = {
@@ -274,6 +309,7 @@ static void test_flush_slot_is_reserved(void)
 
 int main(void)
 {
+    test_hello_ack_assigns_driver_role();
     test_queue_flush_ack_and_inbound();
     test_flush_slot_is_reserved();
     test_atomic_ui_batch();
