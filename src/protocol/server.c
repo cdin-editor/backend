@@ -194,7 +194,14 @@ cdin_backend_status cdin_protocol_hello_accept(cdin_protocol_client *client,
     ack->accepted_capabilities = client->accepted_capabilities;
     ack->client_id = client->id;
     ack->session_id = client->server->session_id;
-    ack->driver = 0;
+    /* The role is returned in HELLO_ACK, so reserve the first negotiated
+     * client as driver before replying. ATTACH activates that reservation. */
+    if (client->server->driver_client_id == 0u && client->driver) {
+        client->server->driver_client_id = client->id;
+    } else if (client->server->driver_client_id != client->id) {
+        client->driver = 0;
+    }
+    ack->driver = client->driver;
     cdin_protocol_log(client->server, CDIN_BACKEND_LOG_DEBUG, "hello_accepted", client->id,
                       CDIN_BACKEND_OK, ack->accepted_capabilities);
     return CDIN_BACKEND_OK;
@@ -260,7 +267,25 @@ cdin_backend_status cdin_protocol_client_close(cdin_protocol_client *client)
     size_t i;
     if (client == NULL || client->closed) return CDIN_BACKEND_INVALID_STATE;
     server = client->server;
-    if (client->attached) (void)cdin_protocol_detach(client);
+    if (client->attached) {
+        (void)cdin_protocol_detach(client);
+    } else if (server->driver_client_id == client->id) {
+        /* Release a HELLO-time driver reservation when that client closes
+         * before ATTACH. Existing attached observers retain normal promotion. */
+        cdin_protocol_client *oldest = NULL;
+        server->driver_client_id = 0u;
+        for (i = 0u; i < server->max_clients; i++) {
+            cdin_protocol_client *candidate = server->clients[i];
+            if (candidate != NULL && candidate != client && candidate->attached &&
+                !candidate->closed && (oldest == NULL || candidate->id < oldest->id)) {
+                oldest = candidate;
+            }
+        }
+        if (oldest != NULL) {
+            oldest->driver = 1;
+            server->driver_client_id = oldest->id;
+        }
+    }
     for (i = 0u; i < server->max_clients; i++) {
         if (server->clients[i] == client) { server->clients[i] = NULL; break; }
     }
