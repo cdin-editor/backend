@@ -135,7 +135,13 @@ int cdin_path_absolute(const char *path, char **out_path)
     {
         DWORD required = GetCurrentDirectoryW(0u, NULL);
         wchar_t *wide_cwd;
-        if (required == 0u || (size_t)required > SIZE_MAX / sizeof(wchar_t)) return -1;
+        if (required == 0u) return -1;
+#if SIZE_MAX <= UINT32_MAX
+        /* DWORD can approach UINT32_MAX on 32-bit Windows. Keep the size_t
+         * allocation check only on targets where that range can overflow. */
+        if ((uint64_t)required + UINT64_C(1) >
+            (uint64_t)(SIZE_MAX / sizeof(wchar_t))) return -1;
+#endif
         wide_cwd = (wchar_t *)calloc((size_t)required + 1u, sizeof(wchar_t));
         if (wide_cwd == NULL) return -1;
         if (GetCurrentDirectoryW(required + 1u, wide_cwd) == 0u) {
