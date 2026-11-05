@@ -52,6 +52,7 @@ void cdin_backend_config_init(cdin_backend_config *config)
     config->max_undo_bytes_per_document = UINT64_C(64) << 20;
     config->max_documents = 1024u;
     config->max_message_bytes = 16u * 1024u;
+    config->max_snapshot_bytes = CDIN_BACKEND_DEFAULT_MAX_SNAPSHOT_BYTES;
     config->runtime_root = "../runtime/lua";
     config->runtime_entry = "cdin.runtime";
     config->enable_lua = 1;
@@ -90,6 +91,8 @@ static cdin_backend_status config_copy(const cdin_backend_config *input,
         out->max_documents == 0u || out->max_documents > SIZE_MAX / 16u ||
         out->max_document_bytes == 0u ||
         out->max_message_bytes == 0u || out->max_message_bytes > 1024u * 1024u ||
+        out->max_snapshot_bytes < out->max_message_bytes ||
+        out->max_snapshot_bytes > CDIN_BACKEND_MAX_SNAPSHOT_BYTES ||
         out->max_log_message_bytes > 1024u * 1024u ||
         out->enable_lua < 0 || out->enable_lua > 1 ||
         out->enable_headless_protocol < 0 || out->enable_headless_protocol > 1 ||
