@@ -210,6 +210,14 @@ if(BUILD_TESTING)
     cdin_enable_strict_test_warnings(cdin_backend_e2e_job_pipeline)
     add_test(NAME backend_e2e_job_pipeline COMMAND cdin_backend_e2e_job_pipeline)
 
+    add_executable(cdin_backend_e2e_job_wakeup
+        tests/e2e/scenarios/job_wakeup.c tests/e2e/support/scenario.c)
+    target_include_directories(cdin_backend_e2e_job_wakeup PRIVATE
+        include src tests/e2e/support)
+    target_link_libraries(cdin_backend_e2e_job_wakeup PRIVATE cdin_backend_services)
+    cdin_enable_strict_test_warnings(cdin_backend_e2e_job_wakeup)
+    add_test(NAME backend_e2e_job_wakeup COMMAND cdin_backend_e2e_job_wakeup)
+
     add_executable(cdin_backend_e2e_job_abort_shutdown
         tests/e2e/scenarios/job_abort_shutdown.c tests/e2e/support/scenario.c)
     target_include_directories(cdin_backend_e2e_job_abort_shutdown PRIVATE
