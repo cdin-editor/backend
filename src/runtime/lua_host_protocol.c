@@ -516,9 +516,19 @@ static int build_options_message(lua_State *L, int model,
     if (!make_text_value(theme, theme_length, &theme_value, limit) ||
         !make_uint_value(revision, &revision_value, limit)) goto done;
     lua_getfield(L, model, "options");
-    if (!lua_istable(L, -1)) { lua_pop(L, 1); goto done; }
     options_value.limit = limit;
-    if (!encode_lua_item(L, -1, &options_value)) { lua_pop(L, 1); goto done; }
+    if (lua_isnil(L, -1)) {
+        /* Runtime UI Model v1 does not require an options member. The
+         * Protocol explicitly permits an empty ui.options map. */
+        static const uint8_t empty_options_map[] = { 0xa0u };
+        if (!buffer_append(&options_value, empty_options_map, sizeof(empty_options_map))) {
+            lua_pop(L, 1);
+            goto done;
+        }
+    } else if (!lua_istable(L, -1) || !encode_lua_item(L, -1, &options_value)) {
+        lua_pop(L, 1);
+        goto done;
+    }
     lua_pop(L, 1);
     entries[0].key = "theme"; entries[0].key_length = 5u;
     entries[0].value = theme_value.data; entries[0].value_length = theme_value.length;
