@@ -38,6 +38,8 @@ struct cdin_backend_job_pool {
     size_t done_head;
     size_t done_count;
     size_t outstanding;
+    cdin_job_wakeup_fn wakeup;
+    void *wakeup_context;
     uint64_t next_id;
     int stopping;
     int aborting;
@@ -122,6 +124,7 @@ static CDIN_THREAD_RETURN CDIN_THREAD_CALL cdin_job_worker(void *opaque)
         }
         cdin_cond_signal(&pool->completion_ready);
         cdin_mutex_unlock(&pool->mutex);
+        if (pool->wakeup != NULL) pool->wakeup(pool->wakeup_context);
     }
 #ifdef _WIN32
     return 0;
@@ -130,7 +133,9 @@ static CDIN_THREAD_RETURN CDIN_THREAD_CALL cdin_job_worker(void *opaque)
 #endif
 }
 
-int cdin_job_pool_create(size_t thread_count, size_t capacity, cdin_job_pool **out_pool)
+int cdin_job_pool_create(size_t thread_count, size_t capacity,
+                         cdin_job_wakeup_fn wakeup, void *wakeup_context,
+                         cdin_job_pool **out_pool)
 {
     cdin_job_pool *pool = NULL;
     size_t bytes = 0u;
@@ -151,6 +156,8 @@ int cdin_job_pool_create(size_t thread_count, size_t capacity, cdin_job_pool **o
     pool->thread_count = thread_count;
     pool->work_capacity = capacity;
     pool->done_capacity = capacity;
+    pool->wakeup = wakeup;
+    pool->wakeup_context = wakeup_context;
 #ifdef _WIN32
     pool->owner_thread = GetCurrentThreadId();
 #else
