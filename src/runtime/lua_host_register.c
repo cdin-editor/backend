@@ -103,7 +103,8 @@ void cdin_lua_register_host(cdin_lua_host *host)
     lua_createtable(L, 0, 1);
     set_closure(L, host, "publish", lua_ui_publish);
     lua_setfield(L, -2, "ui");
-    lua_createtable(L, 0, 4);
+    lua_createtable(L, 0, 5);
+    set_closure(L, host, "read_file", lua_fs_read_file);
     set_closure(L, host, "begin_atomic_write", lua_fs_begin_atomic_write);
     set_closure(L, host, "write_chunk", lua_fs_write_chunk);
     set_closure(L, host, "commit_atomic_write", lua_fs_commit_atomic_write);
