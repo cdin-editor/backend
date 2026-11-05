@@ -89,7 +89,7 @@ int lua_fs_read_file(lua_State *L)
     lua_fs_read_capture capture;
     static const char empty[] = "";
     int status;
-    if (host == NULL || host->backend == NULL ||
+    if (host == NULL || host->backend == NULL || path_length == 0u ||
         memchr(path, '\0', path_length) != NULL) {
         return raise_argument(L, "fs.read_file");
     }
