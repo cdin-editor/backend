@@ -1,4 +1,4 @@
-#include "pool.h"
+#include "jobs/pool.h"
 #include "scenario.h"
 
 #include <stdatomic.h>
