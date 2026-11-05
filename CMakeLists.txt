@@ -195,6 +195,12 @@ if(BUILD_TESTING)
     cdin_enable_strict_test_warnings(cdin_protocol_codec_tests)
     add_test(NAME protocol_codec COMMAND cdin_protocol_codec_tests)
 
+    # A semantic snapshot is a bounded group of individually framed messages.
+    add_executable(cdin_ui_snapshot_budget_tests tests/integration/ui_snapshot_budget.c)
+    target_include_directories(cdin_ui_snapshot_budget_tests PRIVATE src)
+    cdin_enable_strict_test_warnings(cdin_ui_snapshot_budget_tests)
+    add_test(NAME ui_snapshot_budget COMMAND cdin_ui_snapshot_budget_tests)
+
     # FE-007 / TEST-020: a display-free client records and replays both protocol directions.
     add_executable(cdin_protocol_headless_tests tests/headless/headless_frontend.c)
     target_link_libraries(cdin_protocol_headless_tests PRIVATE cdin::protocol)
