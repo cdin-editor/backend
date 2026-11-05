@@ -123,14 +123,81 @@ static size_t cbor_write_uint(uint8_t *output, uint64_t value)
     return width + 1u;
 }
 
+static size_t cbor_write_text(uint8_t *output, const char *value)
+{
+    size_t length = strlen(value);
+    if (length >= 24u) return 0u;
+    output[0] = (uint8_t)(0x60u + length);
+    memcpy(output + 1u, value, length);
+    return length + 1u;
+}
+
+/* The frame codec has already validated this definite-length string array.
+ * Keep this tiny reader local to the adapter so wire capability negotiation
+ * does not duplicate the Protocol codec or infer support from display names. */
+static int role_event_capability_requested(const uint8_t *array, size_t length)
+{
+    size_t offset = 0u;
+    uint64_t count;
+    uint64_t index;
+    uint8_t initial;
+    if (array == NULL || length == 0u) return 0;
+    initial = array[offset++];
+    if ((initial >> 5u) != 4u) return 0;
+    if ((initial & 0x1fu) < 24u) count = initial & 0x1fu;
+    else {
+        size_t width;
+        uint64_t value = 0u;
+        switch (initial & 0x1fu) {
+        case 24u: width = 1u; break;
+        case 25u: width = 2u; break;
+        case 26u: width = 4u; break;
+        case 27u: width = 8u; break;
+        default: return 0;
+        }
+        if (width > length - offset) return 0;
+        while (width-- > 0u) value = (value << 8u) | array[offset++];
+        count = value;
+    }
+    if (count > 64u) return 0;
+    for (index = 0u; index < count; index++) {
+        uint64_t text_length;
+        uint8_t head;
+        if (offset >= length) return 0;
+        head = array[offset++];
+        if ((head >> 5u) != 3u) return 0;
+        if ((head & 0x1fu) < 24u) text_length = head & 0x1fu;
+        else {
+            size_t width;
+            uint64_t value = 0u;
+            switch (head & 0x1fu) {
+            case 24u: width = 1u; break;
+            case 25u: width = 2u; break;
+            case 26u: width = 4u; break;
+            case 27u: width = 8u; break;
+            default: return 0;
+            }
+            if (width > length - offset) return 0;
+            while (width-- > 0u) value = (value << 8u) | array[offset++];
+            text_length = value;
+        }
+        if (text_length > (uint64_t)(length - offset)) return 0;
+        if (text_length == strlen(CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS_NAME) &&
+            memcmp(array + offset, CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS_NAME,
+                   (size_t)text_length) == 0) return 1;
+        offset += (size_t)text_length;
+    }
+    return offset == length ? 0 : 0;
+}
+
 static cdin_backend_status queue_hello_ack(cdin_backend_frontend *frontend,
                                            const cdin_backend_hello_ack *ack)
 {
-    uint8_t payload[96];
+    uint8_t payload[128];
     size_t offset = 0u;
     cdin_protocol_message message;
     /* Deterministic CBOR map order is by encoded key length, then lexical order. */
-    payload[offset++] = 0xa6u;
+    payload[offset++] = 0xa7u;
 #define WRITE_KEY(key_) do { payload[offset++] = (uint8_t)(0x60u + sizeof(key_) - 1u); \
                              memcpy(payload + offset, key_, sizeof(key_) - 1u); offset += sizeof(key_) - 1u; } while (0)
     WRITE_KEY("major"); offset += cbor_write_uint(payload + offset, ack->major);
@@ -138,7 +205,14 @@ static cdin_backend_status queue_hello_ack(cdin_backend_frontend *frontend,
     WRITE_KEY("driver"); payload[offset++] = ack->driver ? 0xf5u : 0xf4u;
     WRITE_KEY("client_id"); offset += cbor_write_uint(payload + offset, ack->client_id);
     WRITE_KEY("session_id"); offset += cbor_write_uint(payload + offset, ack->session_id);
-    WRITE_KEY("accepted_capabilities"); payload[offset++] = 0x80u;
+    WRITE_KEY("driver_role_epoch"); offset += cbor_write_uint(payload + offset, ack->driver_role_epoch);
+    WRITE_KEY("accepted_capabilities");
+    if ((ack->accepted_capabilities & CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS) != 0u) {
+        payload[offset++] = 0x81u;
+        offset += cbor_write_text(payload + offset, CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS_NAME);
+    } else {
+        payload[offset++] = 0x80u;
+    }
 #undef WRITE_KEY
     memset(&message, 0, sizeof(message));
     message.type = CDIN_PROTOCOL_HELLO_ACK;
@@ -153,6 +227,8 @@ static cdin_backend_status receive_hello(cdin_backend_frontend *frontend,
     uint64_t minimum_major, minimum_minor, maximum_major, maximum_minor;
     char frontend_name[97];
     size_t name_length = 0u;
+    const uint8_t *capabilities_array = NULL;
+    size_t capabilities_array_length = 0u;
     cdin_protocol_hello hello;
     cdin_protocol_hello_ack ack;
     cdin_backend_hello_ack public_ack;
@@ -171,6 +247,9 @@ static cdin_backend_status receive_hello(cdin_backend_frontend *frontend,
     decoded = cdin_protocol_payload_get_text(view->payload, view->payload_length, "frontend_name",
                                              frontend_name, sizeof(frontend_name), &name_length);
     if (decoded != CDIN_PROTOCOL_OK) return protocol_status(decoded);
+    decoded = cdin_protocol_payload_get_raw(view->payload, view->payload_length, "capabilities",
+                                            &capabilities_array, &capabilities_array_length);
+    if (decoded != CDIN_PROTOCOL_OK) return protocol_status(decoded);
     (void)name_length;
     if (minimum_major > maximum_major ||
         (minimum_major == maximum_major && minimum_minor > maximum_minor) ||
@@ -182,7 +261,8 @@ static cdin_backend_status receive_hello(cdin_backend_frontend *frontend,
     hello.major = supported_major;
     hello.minor = supported_minor;
     hello.frontend_name = frontend_name;
-    hello.capabilities = 0u; /* No optional wire capabilities are implemented by this Backend build. */
+    hello.capabilities = role_event_capability_requested(capabilities_array, capabilities_array_length)
+        ? CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS : 0u;
     status = cdin_protocol_hello_accept((cdin_protocol_client *)frontend, &hello, &ack);
     if (status != CDIN_BACKEND_OK) return status;
     public_ack.major = ack.major;
@@ -191,6 +271,7 @@ static cdin_backend_status receive_hello(cdin_backend_frontend *frontend,
     public_ack.client_id = ack.client_id;
     public_ack.session_id = ack.session_id;
     public_ack.driver = ack.driver;
+    public_ack.driver_role_epoch = ack.driver_role_epoch;
     return queue_hello_ack(frontend, &public_ack);
 }
 
