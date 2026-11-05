@@ -60,7 +60,7 @@ int scenario_path_join(const char *left, const char *right, char *buffer, size_t
      * representation while preserving compatibility with Win32 file APIs.
      */
     for (cursor = buffer; *cursor != '\0'; cursor++) {
-        if (*cursor == '\\\\') *cursor = '/';
+        if (*cursor == '\\') *cursor = '/';
     }
 #else
     (void)cursor;
