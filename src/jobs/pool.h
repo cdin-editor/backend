@@ -17,7 +17,11 @@ typedef cdin_backend_job_options cdin_job_options;
 #define CDIN_JOB_FAILED CDIN_BACKEND_JOB_FAILED
 #define CDIN_JOB_CANCELLED CDIN_BACKEND_JOB_CANCELLED
 
-int cdin_job_pool_create(size_t thread_count, size_t capacity, cdin_job_pool **out_pool);
+typedef void (*cdin_job_wakeup_fn)(void *context);
+
+int cdin_job_pool_create(size_t thread_count, size_t capacity,
+                         cdin_job_wakeup_fn wakeup, void *wakeup_context,
+                         cdin_job_pool **out_pool);
 int cdin_job_submit(cdin_job_pool *pool, const cdin_job_options *options, cdin_job_token **out_token);
 void cdin_job_cancel(cdin_job_token *token);
 size_t cdin_job_pump(cdin_job_pool *pool, size_t max_completions);
