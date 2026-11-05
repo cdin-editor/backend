@@ -30,6 +30,7 @@ struct cdin_protocol_server {
     uint64_t supported_capabilities;
     uint64_t next_client_id;
     uint64_t driver_client_id;
+    uint64_t driver_role_epoch;
     cdin_protocol_client **clients;
     cdin_protocol_diagnostic_fn diagnostic;
     void *diagnostic_context;
@@ -58,6 +59,7 @@ struct cdin_protocol_client {
     int attached;
     int closed;
     int driver;
+    int role_event_pending;
 };
 
 static void cdin_protocol_log(cdin_protocol_server *server, int level, const char *event,
@@ -68,6 +70,13 @@ static void cdin_protocol_log(cdin_protocol_server *server, int level, const cha
     }
 }
 
+static cdin_backend_status protocol_enqueue(cdin_protocol_client *client,
+                                             const cdin_protocol_message *message,
+                                             int is_flush_marker);
+static cdin_backend_status queue_driver_role_event(cdin_protocol_client *client,
+                                                     uint64_t epoch);
+static cdin_backend_status promote_oldest_observer(cdin_protocol_server *server);
+
 static void cdin_protocol_clear_item(cdin_protocol_queued *item)
 {
     free(item->payload);
@@ -76,6 +85,9 @@ static void cdin_protocol_clear_item(cdin_protocol_queued *item)
 
 static void cdin_protocol_remove_item(cdin_protocol_client *client, size_t index)
 {
+    if (client->queue[index].type == CDIN_PROTOCOL_DRIVER_ROLE_CHANGED) {
+        client->role_event_pending = 0;
+    }
     cdin_protocol_clear_item(&client->queue[index]);
     if (index + 1u < client->queue_count) {
         memmove(&client->queue[index], &client->queue[index + 1u],
@@ -197,10 +209,13 @@ cdin_backend_status cdin_protocol_hello_accept(cdin_protocol_client *client,
     /* The role is returned in HELLO_ACK, so reserve the first negotiated
      * client as driver before replying. ATTACH activates that reservation. */
     if (client->server->driver_client_id == 0u) {
+        if (client->server->driver_role_epoch == UINT64_MAX) return CDIN_BACKEND_LIMIT_EXCEEDED;
+        client->server->driver_role_epoch++;
         client->server->driver_client_id = client->id;
         client->driver = 1;
     }
     ack->driver = client->driver;
+    ack->driver_role_epoch = client->server->driver_role_epoch;
     cdin_protocol_log(client->server, CDIN_BACKEND_LOG_DEBUG, "hello_accepted", client->id,
                       CDIN_BACKEND_OK, ack->accepted_capabilities);
     return CDIN_BACKEND_OK;
@@ -243,17 +258,11 @@ cdin_backend_status cdin_protocol_detach(cdin_protocol_client *client)
     }
     /* Per-connection sequence numbers survive detach/reattach. */
     if (server->driver_client_id == client->id) {
-        cdin_protocol_client *oldest = NULL;
-        server->driver_client_id = 0u;
-        /* Slot reuse is not connection order; compare monotonic client IDs. */
-        for (i = 0u; i < server->max_clients; i++) {
-            cdin_protocol_client *candidate = server->clients[i];
-            if (candidate != NULL && candidate->attached && !candidate->closed &&
-                (oldest == NULL || candidate->id < oldest->id)) oldest = candidate;
-        }
-        if (oldest != NULL) {
-            oldest->driver = 1;
-            server->driver_client_id = oldest->id;
+        cdin_backend_status promotion_status = promote_oldest_observer(server);
+        if (promotion_status != CDIN_BACKEND_OK) {
+            cdin_protocol_log(server, CDIN_BACKEND_LOG_ERROR, "driver_role_event_failed",
+                              0u, promotion_status, server->driver_role_epoch);
+            return promotion_status;
         }
     }
     cdin_protocol_log(server, CDIN_BACKEND_LOG_INFO, "client_detached", client->id,
@@ -270,20 +279,15 @@ cdin_backend_status cdin_protocol_client_close(cdin_protocol_client *client)
     if (client->attached) {
         (void)cdin_protocol_detach(client);
     } else if (server->driver_client_id == client->id) {
-        /* Release a HELLO-time driver reservation when that client closes
-         * before ATTACH. Existing attached observers retain normal promotion. */
-        cdin_protocol_client *oldest = NULL;
+        /* Release a HELLO-time lease reservation; promote the oldest attached
+         * observer through the same observable role-transition path. */
+        cdin_backend_status promotion_status;
         server->driver_client_id = 0u;
-        for (i = 0u; i < server->max_clients; i++) {
-            cdin_protocol_client *candidate = server->clients[i];
-            if (candidate != NULL && candidate != client && candidate->attached &&
-                !candidate->closed && (oldest == NULL || candidate->id < oldest->id)) {
-                oldest = candidate;
-            }
-        }
-        if (oldest != NULL) {
-            oldest->driver = 1;
-            server->driver_client_id = oldest->id;
+        promotion_status = promote_oldest_observer(server);
+        if (promotion_status != CDIN_BACKEND_OK) {
+            cdin_protocol_log(server, CDIN_BACKEND_LOG_ERROR, "driver_role_event_failed",
+                              0u, promotion_status, server->driver_role_epoch);
+            return promotion_status;
         }
     }
     for (i = 0u; i < server->max_clients; i++) {
@@ -366,9 +370,11 @@ static cdin_backend_status protocol_enqueue(cdin_protocol_client *client,
      * consume the entire queue and make an otherwise valid batch impossible
      * to terminate atomically. The internal flush path may consume the slot. */
     queue_limit = client->queue_capacity;
-    if (!is_flush_marker &&
-        client->pending_flushes < client->server->max_unacked_flushes) {
-        queue_limit--; /* queue_capacity is guaranteed to be non-zero. */
+    if (!is_flush_marker) {
+        size_t reserved = 0u;
+        if (client->pending_flushes < client->server->max_unacked_flushes) reserved++;
+        if ((client->accepted_capabilities & CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS) != 0u) reserved++;
+        queue_limit = reserved >= queue_limit ? 0u : queue_limit - reserved;
     }
     if (client->queue_count >= queue_limit) {
         free(copy);
@@ -383,6 +389,7 @@ static cdin_backend_status protocol_enqueue(cdin_protocol_client *client,
     client->queue[client->queue_count].payload_length = message->payload_length;
     client->queue[client->queue_count].flush_sequence = 0u;
     client->queue_count++;
+    if (message->type == CDIN_PROTOCOL_DRIVER_ROLE_CHANGED) client->role_event_pending = 1;
     cdin_protocol_log(client->server, CDIN_BACKEND_LOG_TRACE, "message_queued",
                       client->id, CDIN_BACKEND_OK, (uint64_t)message->type);
     return CDIN_BACKEND_OK;
@@ -407,6 +414,60 @@ static size_t write_cbor_uint(uint8_t *output, uint64_t value)
     for (index = 0u; index < bytes; index++)
         output[1u + index] = (uint8_t)(value >> ((bytes - index - 1u) * 8u));
     return bytes + 1u;
+}
+
+static cdin_backend_status queue_driver_role_event(cdin_protocol_client *client,
+                                                     uint64_t epoch)
+{
+    uint8_t payload[32];
+    size_t offset = 0u;
+    cdin_protocol_message message;
+    if (client == NULL || client->closed || !client->attached) {
+        return CDIN_BACKEND_INVALID_STATE;
+    }
+    if ((client->accepted_capabilities & CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS) == 0u) {
+        return CDIN_BACKEND_OK; /* Legacy Frontends reconnect to refresh HELLO_ACK. */
+    }
+    if (client->role_event_pending) return CDIN_BACKEND_BUSY;
+    payload[offset++] = 0xa2u;
+    payload[offset++] = 0x65u; memcpy(payload + offset, "epoch", 5u); offset += 5u;
+    offset += write_cbor_uint(payload + offset, epoch);
+    payload[offset++] = 0x66u; memcpy(payload + offset, "driver", 6u); offset += 6u;
+    payload[offset++] = client->driver ? 0xf5u : 0xf4u;
+    memset(&message, 0, sizeof(message));
+    message.type = CDIN_PROTOCOL_DRIVER_ROLE_CHANGED;
+    message.payload = payload;
+    message.payload_length = offset;
+    /* This consumes the slot reserved for a negotiated role event, not a
+     * flush slot: the role update is ordered but is not an ACK group. */
+    return protocol_enqueue(client, &message, 1);
+}
+
+static cdin_backend_status promote_oldest_observer(cdin_protocol_server *server)
+{
+    cdin_protocol_client *oldest = NULL;
+    size_t index;
+    cdin_backend_status status;
+    if (server == NULL) return CDIN_BACKEND_INVALID_ARGUMENT;
+    if (server->driver_role_epoch == UINT64_MAX) return CDIN_BACKEND_LIMIT_EXCEEDED;
+    server->driver_role_epoch++;
+    server->driver_client_id = 0u;
+    for (index = 0u; index < server->max_clients; index++) {
+        cdin_protocol_client *candidate = server->clients[index];
+        if (candidate != NULL && candidate->attached && !candidate->closed &&
+            (oldest == NULL || candidate->id < oldest->id)) oldest = candidate;
+    }
+    if (oldest == NULL) return CDIN_BACKEND_OK;
+    oldest->driver = 1;
+    server->driver_client_id = oldest->id;
+    status = queue_driver_role_event(oldest, server->driver_role_epoch);
+    if (status != CDIN_BACKEND_OK) {
+        /* Never grant an unobservable lease to a negotiated Frontend. The
+         * session stays fail-closed and a subsequent HELLO can acquire it. */
+        oldest->driver = 0;
+        server->driver_client_id = 0u;
+    }
+    return status;
 }
 
 static size_t write_cbor_text(uint8_t *output, const char *value, size_t length)
