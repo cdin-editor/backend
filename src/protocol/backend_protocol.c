@@ -191,7 +191,7 @@ static int role_event_capability_requested(const uint8_t *array, size_t length)
 }
 
 static cdin_backend_status queue_hello_ack(cdin_backend_frontend *frontend,
-                                           const cdin_backend_hello_ack *ack)
+                                           const cdin_backend_hello_ack *ack, uint64_t driver_role_epoch)
 {
     uint8_t payload[128];
     size_t offset = 0u;
@@ -205,7 +205,7 @@ static cdin_backend_status queue_hello_ack(cdin_backend_frontend *frontend,
     WRITE_KEY("driver"); payload[offset++] = ack->driver ? 0xf5u : 0xf4u;
     WRITE_KEY("client_id"); offset += cbor_write_uint(payload + offset, ack->client_id);
     WRITE_KEY("session_id"); offset += cbor_write_uint(payload + offset, ack->session_id);
-    WRITE_KEY("driver_role_epoch"); offset += cbor_write_uint(payload + offset, ack->driver_role_epoch);
+    WRITE_KEY("driver_role_epoch"); offset += cbor_write_uint(payload + offset, driver_role_epoch);
     WRITE_KEY("accepted_capabilities");
     if ((ack->accepted_capabilities & CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS) != 0u) {
         payload[offset++] = 0x81u;
@@ -271,8 +271,7 @@ static cdin_backend_status receive_hello(cdin_backend_frontend *frontend,
     public_ack.client_id = ack.client_id;
     public_ack.session_id = ack.session_id;
     public_ack.driver = ack.driver;
-    public_ack.driver_role_epoch = ack.driver_role_epoch;
-    return queue_hello_ack(frontend, &public_ack);
+    return queue_hello_ack(frontend, &public_ack, ack.driver_role_epoch);
 }
 
 cdin_backend_status cdin_backend_frontend_enqueue(cdin_backend_frontend *frontend,
