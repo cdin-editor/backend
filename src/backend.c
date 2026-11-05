@@ -185,6 +185,8 @@ cdin_backend_status cdin_backend_start(cdin_backend *backend)
     failed_stage = "worker pool creation";
     if (cdin_job_pool_create(backend->config.job_threads,
                              backend->config.job_queue_capacity,
+                             backend->config.wakeup_callback,
+                             backend->config.wakeup_context,
                              &backend->jobs) != 0) {
         status = CDIN_BACKEND_NO_MEMORY;
         goto fail;
