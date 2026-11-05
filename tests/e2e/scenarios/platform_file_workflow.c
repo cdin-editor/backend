@@ -97,6 +97,11 @@ int main(void)
     SCENARIO_CHECK(memcmp(capture.bytes, source, capture.length) == 0);
     SCENARIO_CHECK(cdin_fs_stat(file, &info) == 0);
     SCENARIO_CHECK(info.type == CDIN_FS_FILE && info.size == total);
+    /* Verify directory metadata while the original 27-byte workspace file
+     * is still published. The next section intentionally replaces it with
+     * a different-sized binary fixture. */
+    SCENARIO_CHECK(cdin_fs_list_directory(directory, capture_entry, &found) == 0);
+    SCENARIO_CHECK(found == 1u);
 
     /* The same reader is binary-safe: BOM, NUL, invalid UTF-8 and EOL bytes
      * must survive arbitrary chunk boundaries without normalization. */
@@ -122,9 +127,6 @@ int main(void)
     SCENARIO_CHECK(cdin_fs_read_chunks(file, 3u, 128u, fail_read_with_errno,
                                        &callback_errno, &total) != 0);
     SCENARIO_CHECK(errno == callback_errno);
-
-    SCENARIO_CHECK(cdin_fs_list_directory(directory, capture_entry, &found) == 0);
-    SCENARIO_CHECK(found == 1u);
 
     SCENARIO_CHECK(cdin_path_relative(directory, file, &relative) == 0);
     SCENARIO_CHECK(strcmp(relative, "workspace.cdin") == 0);
