@@ -46,7 +46,6 @@ int scenario_path_join(const char *left, const char *right, char *buffer, size_t
 {
     size_t left_length;
     int written;
-    char *cursor;
     if (left == NULL || right == NULL || buffer == NULL || capacity == 0u) return -1;
     left_length = strlen(left);
     written = snprintf(buffer, capacity, "%s%s%s", left,
@@ -54,6 +53,7 @@ int scenario_path_join(const char *left, const char *right, char *buffer, size_t
                        right);
     if (written < 0 || (size_t)written >= capacity) return -1;
 #ifdef _WIN32
+    char *cursor;
     /*
      * Backend path APIs expose normalized slash-separated paths on every
      * platform. Keep the independent test helper's expected path in that
@@ -62,8 +62,6 @@ int scenario_path_join(const char *left, const char *right, char *buffer, size_t
     for (cursor = buffer; *cursor != '\0'; cursor++) {
         if (*cursor == '\\') *cursor = '/';
     }
-#else
-    (void)cursor;
 #endif
     return 0;
 }
