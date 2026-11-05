@@ -192,7 +192,7 @@ int get_optional_blob(lua_State *L, int table, const char *name,
 
 
 size_t check_optional_size(lua_State *L, int index, lua_Integer fallback,
-                                  size_t maximum, const char *field)
+                                  uint64_t maximum, const char *field)
 {
     lua_Integer value = lua_isnoneornil(L, index) ? fallback : luaL_checkinteger(L, index);
     if (value < 0 || (uint64_t)value > (uint64_t)maximum) {
