@@ -205,6 +205,7 @@ cdin_backend_status cdin_protocol_hello_accept(cdin_protocol_client *client,
     ack->accepted_capabilities = client->accepted_capabilities;
     ack->client_id = client->id;
     ack->session_id = client->server->session_id;
+    if (client->next_message_sequence == UINT64_MAX) return CDIN_BACKEND_LIMIT_EXCEEDED;
     /* The role is returned in HELLO_ACK, so reserve the first negotiated
      * client as driver before replying. ATTACH activates that reservation. */
     if (client->server->driver_client_id == 0u) {
