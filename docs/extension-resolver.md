@@ -81,7 +81,6 @@ callback is not a Frontend Protocol command and does not grant a remote Driver
 permission to load local code. An application exposing extension management
 must provide a separate local administrative authorization boundary.
 
-
 ## Trusted application lifecycle API
 
 The C embedding API exposes the Runtime's existing local extension lifecycle
