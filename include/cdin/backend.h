@@ -165,6 +165,17 @@ cdin_backend_status cdin_backend_shutdown(cdin_backend *backend, int abort_pendi
 void cdin_backend_destroy(cdin_backend *backend);
 cdin_backend_state cdin_backend_get_state(const cdin_backend *backend);
 
+/* Trusted local application lifecycle for Runtime extensions. These calls
+ * execute synchronously on the Backend/Runtime owner thread and require a
+ * running Lua Runtime. Loading additionally requires an explicitly configured
+ * extension_source_root. They are not Frontend Protocol commands and must
+ * never be forwarded from an untrusted remote session. The Backend resolver
+ * confines every module read to the selected extension namespace. */
+cdin_backend_status cdin_backend_extension_load(cdin_backend *backend,
+                                                const char *extension_name);
+cdin_backend_status cdin_backend_extension_unload(cdin_backend *backend,
+                                                  const char *extension_name);
+
 #ifdef __cplusplus
 }
 #endif
