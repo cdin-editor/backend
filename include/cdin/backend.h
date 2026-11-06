@@ -9,9 +9,9 @@ extern "C" {
 #endif
 
 #define CDIN_BACKEND_VERSION_MAJOR 1u
-#define CDIN_BACKEND_VERSION_MINOR 0u
-#define CDIN_BACKEND_VERSION_PATCH 2u
-#define CDIN_BACKEND_VERSION_STRING "1.0.2"
+#define CDIN_BACKEND_VERSION_MINOR 1u
+#define CDIN_BACKEND_VERSION_PATCH 0u
+#define CDIN_BACKEND_VERSION_STRING "1.1.0"
 #define CDIN_BACKEND_HOST_API_MAJOR 1u
 #define CDIN_BACKEND_HOST_API_MINOR 0u
 #define CDIN_BACKEND_HOST_API_PATCH 0u
@@ -127,10 +127,13 @@ typedef struct cdin_backend_config {
     uint64_t max_snapshot_bytes;
     /* Trusted, disabled-by-default extension source root. Each direct child
      * directory is one extension namespace containing init.lua and dotted
-     * child modules mapped to relative .lua files. */
+     * child modules mapped to relative .lua files. NULL keeps extension
+     * loading unavailable; the configured root must not be user-writable. */
     const char *extension_source_root;
-    /* Per-module source-byte cap and total successful module reads per
-     * Backend Runtime instance. Their product is bounded to 64 MiB. */
+    /* Per-module source-byte cap (default 256 KiB, maximum 1 MiB) and maximum
+     * successful source reads per Runtime instance (default 128, max 256).
+     * Their product is also the aggregate byte budget and may not exceed
+     * 64 MiB. Appended fields preserve older struct_size callers. */
     uint64_t max_extension_source_bytes;
     uint32_t max_extension_modules;
 } cdin_backend_config;
