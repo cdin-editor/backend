@@ -97,6 +97,8 @@ static void test_queue_flush_ack_and_inbound(void)
     cdin_protocol_message outbound;
     cdin_protocol_message queued;
     cdin_protocol_message_view inbound;
+    cdin_protocol_hello hello;
+    cdin_protocol_hello_ack ack;
     uint64_t flush_sequence = 0u;
 
     assert(cdin_protocol_server_create(2u, 4u, 2u, 0x11223344u, 0u,
@@ -171,6 +173,9 @@ static void test_queue_flush_ack_and_inbound(void)
     server = NULL;
     driver = NULL;
     observer = NULL;
+    memset(&hello, 0, sizeof(hello));
+    hello.major = CDIN_PROTOCOL_VERSION_MAJOR;
+    hello.minor = CDIN_PROTOCOL_VERSION_MINOR;
     hello.capabilities = 0u;
     hello.frontend_name = "legacy-driver";
     assert(cdin_protocol_server_create(2u, 4u, 2u, 0x55667788u,
