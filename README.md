@@ -42,7 +42,7 @@ Kernel header.
 
 ## Current status
 
-This repository contains Backend library version 1.1.0, the shared Frontend Protocol 1.0.0
+This repository contains Backend library version 1.2.0, the shared Frontend Protocol 1.0.0
 codec/server, reusable OS/job services, Kernel adapter, PUC Lua 5.4 bridge,
 Runtime UI-model projection, owner-thread inbound event dispatcher,
 version-pinned line-read service, Headless Frontend harness and integration
