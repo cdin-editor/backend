@@ -2,7 +2,8 @@
 
 - Correct the Protocol server regression test to expect the reattach role notification at the next per-connection frame sequence after the earlier promotion event.
 - Add optional bounded `host.fs:read_file()` for exact binary file bytes with structured file-read errors.
-- Increment Backend library/package version to `1.0.2`; Host API remains `1.0.0` because file reading is additive and optional.
+- Add the disabled-by-default, Backend-owned Runtime extension resolver with canonical root confinement, no-follow file traversal, reparse/symlink denial, exact-byte source reads, owner-thread enforcement and per-module/module-count/aggregate limits.
+- Append resolver source-root and budget fields to `cdin_backend_config`; older callers remain compatible through `struct_size`. Bump Backend library/package version to `1.1.0`; Host API remains `1.0.0` because the resolver is an optional embedding configuration, not a Host API change.
 
 - Add standalone deterministic-CBOR Frontend Protocol codec, bounded bidirectional queues, headless replay tests and fuzz entry point.
 - Resolve Spec ADR-0018/0019 links and document remaining Runtime, transport, Kernel/Lua and platform integration gates.
