@@ -262,6 +262,14 @@ static int test_resolver(void)
         }
     }
 #endif
+    /* With no configured source root, Runtime receives no resolver and
+     * a defensive direct call still fails closed. */
+    cleanup_host(&host);
+    if (setup_host(&backend, &host, NULL, 48u, 4u) != 0 ||
+        resolve_module(L, resolver_ref, "demo", "init",
+                       NULL, 0u, NULL, "UNSUPPORTED") != RESOLVER_CALL_ERROR) {
+        goto cleanup_host_and_tree;
+    }
     result = 0;
 
     cleanup_host_and_tree:
