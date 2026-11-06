@@ -296,7 +296,7 @@ static int test_resolver(void)
         goto cleanup_tree;
     }
 
-    if (setup_host(&backend, &host, root, 48u, 4u) != 0) {
+    if (setup_host(&backend, &host, root, 48u, 5u) != 0) {
         (void)fprintf(stderr, "could not initialize extension resolver\n");
         goto cleanup_tree;
     }
@@ -392,9 +392,13 @@ static int test_resolver(void)
         goto cleanup_host_and_tree;
     }
 
-    /* Four successful reads are init, repeated init, nested greeting and
-     * binary source. Missing, oversized and unreadable reads consume no slot. */
+    /* Five successful reads are init, repeated init, nested greeting,
+     * binary source and large.small. Missing, oversized and unreadable reads
+     * consume no slot; the next successful source read exceeds the budget. */
     if (resolve_module(L, resolver_ref, "demo", "large.small",
+                       (const uint8_t *)small_source, sizeof(small_source) - 1u,
+                       "extension://demo/large.small", NULL) != RESOLVER_CALL_OK ||
+        resolve_module(L, resolver_ref, "demo", "large.another",
                        NULL, 0u, NULL, "LIMIT_EXCEEDED") != RESOLVER_CALL_ERROR) {
         goto cleanup_host_and_tree;
     }
