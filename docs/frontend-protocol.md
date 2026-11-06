@@ -26,13 +26,26 @@ Protocol 1.0.0 does not encode floating-point values. Pane split ratios are conv
 
 ## 3. Implemented publication and inbound paths
 
-`lua_ui_publish()` retains the latest semantic snapshot, projects it for each attached Client, and calls the atomic `cdin_protocol_publish_snapshot()` operation. Every message is schema-validated before the whole message group plus final flush marker is committed to that Client's bounded queue. The combined snapshot has a total byte budget as well as per-message limits. Queue pressure leaves Runtime authoritative state intact and marks the Client behind; when an ACK frees capacity, Backend retries only if the cached revision is newer than the last snapshot revision queued for that Client. Detach resets this state; attach sends a full snapshot.
+`lua_ui_publish()` retains the latest semantic snapshot, projects it for each attached Client,
+and calls the atomic `cdin_protocol_publish_snapshot()` operation. Every message is
+schema-validated before the whole message group plus final flush marker is committed to that
+Client's bounded queue. The combined snapshot has a total byte budget as well as per-message
+limits. Queue pressure leaves Runtime authoritative state intact and marks the Client behind;
+when an ACK frees capacity, Backend retries only if the cached revision is newer than the last
+snapshot revision queued for that Client. Detach resets this state; attach sends a full
+snapshot.
 
 Inbound `cdin_backend_frontend_receive()` performs frame/schema/direction/sequence/permission checks and copies valid events to a bounded queue. `cdin_backend_pump()` runs the Lua Host pump on the owner thread. The dispatcher calls `Runtime:handle_frontend_event()` for key, text, paste, mouse, resize, focus, view-position and command events. `view.request_lines` calls `Runtime:read_view_lines()` and returns a response-scoped `view.lines` batch.
 
 ## 4. Document line-window semantics
 
-`view.request_lines` includes `view_id`, zero-based `first_line`, `line_count` (`1..4096`) and a required document `version`. Backend reads through a temporary Kernel Snapshot and checks the version before calculating line offsets or copying bytes. The `view.lines.lines` array contains maps with one `bytes` CBOR byte string each; `total_lines` gives the logical line count at the same version. Original EOL bytes, NUL and invalid UTF-8 are preserved. Only complete lines are returned; a too-large first line produces a structured limit error, and a partial line is never sent. A stale version produces `STALE_VERSION` and requires a fresh model/line request.
+`view.request_lines` includes `view_id`, zero-based `first_line`, `line_count` (`1..4096`) and a
+required document `version`. Backend reads through a temporary Kernel Snapshot and checks the
+version before calculating line offsets or copying bytes. The `view.lines.lines` array contains
+maps with one `bytes` CBOR byte string each; `total_lines` gives the logical line count at the
+same version. Original EOL bytes, NUL and invalid UTF-8 are preserved. Only complete lines are
+returned; a too-large first line produces a structured limit error, and a partial line is never
+sent. A stale version produces `STALE_VERSION` and requires a fresh model/line request.
 
 ## 5. Remaining integration gates
 
@@ -47,4 +60,9 @@ See [Frontend Integration Guide](frontend-integration.md), [Host API](host-api.m
 
 ## 6. Message catalogue
 
-The public enum and validator cover: `hello`, `hello_ack`, `attach`, `detach`, `detach_ack`, `ack`, `input.key`, `input.text`, `input.mouse`, `input.paste`, `window.resize`, `focus`, `view.request_lines`, `view.set_position`, `request.command`, `response.clipboard`, `response.dialog`, `ui.options`, `ui.style_table`, `ui.layout`, `view.lines`, `view.invalidate`, `view.cursor`, `view.selection`, `ui.statusline`, `ui.prompt`, `ui.panel`, `ui.notify`, `request.clipboard_get`, `request.clipboard_set`, `request.dialog`, `error` and `ui.flush`.
+The public enum and validator cover: `hello`, `hello_ack`, `attach`, `detach`, `detach_ack`,
+`ack`, `input.key`, `input.text`, `input.mouse`, `input.paste`, `window.resize`, `focus`,
+`view.request_lines`, `view.set_position`, `request.command`, `response.clipboard`,
+`response.dialog`, `ui.options`, `ui.style_table`, `ui.layout`, `view.lines`, `view.invalidate`,
+`view.cursor`, `view.selection`, `ui.statusline`, `ui.prompt`, `ui.panel`, `ui.notify`,
+`request.clipboard_get`, `request.clipboard_set`, `request.dialog`, `error` and `ui.flush`.
