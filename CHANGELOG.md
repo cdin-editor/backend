@@ -4,6 +4,7 @@
 - Add optional bounded `host.fs:read_file()` for exact binary file bytes with structured file-read errors.
 - Add the disabled-by-default, Backend-owned Runtime extension resolver with canonical root confinement, no-follow file traversal, reparse/symlink denial, exact-byte source reads, owner-thread enforcement and per-module/module-count/aggregate limits.
 - Add trusted owner-thread Backend C entry points for Runtime extension load/unload; keep extension lifecycle out of Frontend Protocol and fail closed without an explicitly configured resolver root.
+- Publish the trusted extension lifecycle entry points in Backend 1.2.0; the Runtime Host API and Frontend Protocol compatibility versions remain independent and unchanged.
 - Append resolver source-root and budget fields to `cdin_backend_config`; older callers remain compatible through `struct_size`. Bump Backend library/package version to `1.1.0`; Host API remains `1.0.0` because the resolver is an optional embedding configuration, not a Host API change.
 
 - Add standalone deterministic-CBOR Frontend Protocol codec, bounded bidirectional queues, headless replay tests and fuzz entry point.
