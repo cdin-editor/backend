@@ -125,6 +125,14 @@ typedef struct cdin_backend_config {
     /* Aggregate semantic UI snapshot budget, distinct from the per-frame cap.
      * Appended for struct_size compatibility; defaults to 4 MiB. */
     uint64_t max_snapshot_bytes;
+    /* Trusted, disabled-by-default extension source root. Each direct child
+     * directory is one extension namespace containing init.lua and dotted
+     * child modules mapped to relative .lua files. */
+    const char *extension_source_root;
+    /* Per-module source-byte cap and total successful module reads per
+     * Backend Runtime instance. Their product is bounded to 64 MiB. */
+    uint64_t max_extension_source_bytes;
+    uint32_t max_extension_modules;
 } cdin_backend_config;
 
 /* Fill all fields with portable defaults before applying caller overrides. */
