@@ -172,6 +172,7 @@ static int test_resolver(void)
         join_path(helpers, sizeof(helpers), demo, "helpers") != 0 ||
         join_path(large, sizeof(large), demo, "large") != 0 ||
         join_path(outside, sizeof(outside), temp, "outside") != 0 ||
+        join_path(secret_file, sizeof(secret_file), outside, "secret.lua") != 0 ||
         make_dir(root) != 0 || make_dir(demo) != 0 ||
         make_dir(helpers) != 0 || make_dir(large) != 0 || make_dir(outside) != 0) {
         (void)fprintf(stderr, "could not create extension resolver test tree\n");
@@ -225,17 +226,6 @@ static int test_resolver(void)
         goto cleanup_host_and_tree;
     }
 
-    /* Four successful reads exhaust the configured per-host module-count
-     * cap. Failed and missing reads do not consume a module slot. */
-    if (resolve_module(L, resolver_ref, "demo", "large.small",
-                       (const uint8_t *)small_source, sizeof(small_source) - 1u,
-                       "extension://demo/large.small", NULL) != RESOLVER_CALL_OK ||
-        resolve_module(L, resolver_ref, "demo", "large.another",
-                       (const uint8_t *)small_source, sizeof(small_source) - 1u,
-                       "extension://demo/large.another", "LIMIT_EXCEEDED") != RESOLVER_CALL_ERROR) {
-        goto cleanup_host_and_tree;
-    }
-
     if (join_path(path, sizeof(path), demo, "linked.lua") != 0) goto cleanup_host_and_tree;
 #ifdef _WIN32
     if (CreateSymbolicLinkA(path, secret_file, 0x2u)) {
@@ -267,6 +257,18 @@ static int test_resolver(void)
         }
     }
 #endif
+
+    /* Four successful reads exhaust the configured per-host module-count
+     * cap. Failed and missing reads do not consume a module slot. */
+    if (resolve_module(L, resolver_ref, "demo", "large.small",
+                       (const uint8_t *)small_source, sizeof(small_source) - 1u,
+                       "extension://demo/large.small", NULL) != RESOLVER_CALL_OK ||
+        resolve_module(L, resolver_ref, "demo", "large.another",
+                       (const uint8_t *)small_source, sizeof(small_source) - 1u,
+                       "extension://demo/large.another", "LIMIT_EXCEEDED") != RESOLVER_CALL_ERROR) {
+        goto cleanup_host_and_tree;
+    }
+
     /* With no configured source root, Runtime receives no resolver and
      * a defensive direct call still fails closed. */
     cleanup_host(&host);
