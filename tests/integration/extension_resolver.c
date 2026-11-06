@@ -250,7 +250,8 @@ static int test_resolver(void)
 {
     char temp[512] = { 0 };
     char root[640], demo[640], helpers[640], large[640], outside[640];
-    char path[768], link_path[768], secret_file[768], read_failure_path[768];
+    char path[768] = { 0 }, link_path[768] = { 0 }, secret_file[768] = { 0 };
+    char read_failure_path[768] = { 0 };
     static const char init_source[] = "return { init = function() end }";
     static const char greeting_source[] = "return { value = 'hello' }\n";
     static const char small_source[] = "return true\n";
@@ -425,8 +426,10 @@ static int test_resolver(void)
     (void)join_path(path, sizeof(path), large, "another.lua"); (void)remove_file(path);
     (void)join_path(path, sizeof(path), demo, "binary.lua"); (void)remove_file(path);
     (void)remove_file(secret_file);
-    (void)chmod(read_failure_path, 0600);
-    (void)remove_file(read_failure_path);
+    if (read_failure_path[0] != '\0') {
+        (void)chmod(read_failure_path, 0600);
+        (void)remove_file(read_failure_path);
+    }
     (void)join_path(link_path, sizeof(link_path), demo, "linked.lua");
     (void)join_path(path, sizeof(path), demo, "Case.lua");
     (void)remove_file(path);
