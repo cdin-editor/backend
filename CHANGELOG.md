@@ -1,5 +1,6 @@
 ## Unreleased
 
+- Correct the Protocol server regression test to expect the reattach role notification at the next per-connection frame sequence after the earlier promotion event.
 - Add optional bounded `host.fs:read_file()` for exact binary file bytes with structured file-read errors.
 - Increment Backend library/package version to `1.0.2`; Host API remains `1.0.0` because file reading is additive and optional.
 
