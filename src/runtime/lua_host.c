@@ -103,9 +103,14 @@ static int runtime_load_and_start(cdin_lua_host *host)
     lua_pushstring(L, host->backend->runtime_entry);
     if (lua_pcall(L, 1, 1, 0) != LUA_OK) return -1;
     lua_getfield(L, -1, "new");
-    lua_createtable(L, 0, 1);
+    lua_createtable(L, 0, 2);
     lua_rawgeti(L, LUA_REGISTRYINDEX, host->host_ref);
     lua_setfield(L, -2, "host");
+    if (host->extension_root_path != NULL) {
+        lua_pushlightuserdata(L, host);
+        lua_pushcclosure(L, lua_extension_module_resolver, 1);
+        lua_setfield(L, -2, "module_resolver");
+    }
     if (lua_pcall(L, 1, 1, 0) != LUA_OK) return -1;
     lua_remove(L, -2); /* Runtime module */
     host->runtime_ref = luaL_ref(L, LUA_REGISTRYINDEX);
@@ -133,8 +138,23 @@ cdin_backend_status cdin_lua_host_start(cdin_backend *backend, cdin_lua_host **o
     host->host_ref = LUA_NOREF;
     host->runtime_ref = LUA_NOREF;
     host->latest_ui_ref = LUA_NOREF;
+#ifndef _WIN32
+    host->extension_root_fd = -1;
+#endif
+    {
+        cdin_backend_status resolver_status = cdin_lua_host_extension_resolver_init(host);
+        if (resolver_status != CDIN_BACKEND_OK) {
+            cdin_lua_host_extension_resolver_destroy(host);
+            free(host);
+            return resolver_status;
+        }
+    }
     host->state = luaL_newstate();
-    if (host->state == NULL) { free(host); return CDIN_BACKEND_NO_MEMORY; }
+    if (host->state == NULL) {
+        cdin_lua_host_extension_resolver_destroy(host);
+        free(host);
+        return CDIN_BACKEND_NO_MEMORY;
+    }
     luaL_openlibs(host->state);
     if (set_package_path(host->state, backend->runtime_root) != 0) {
         lua_close(host->state); free(host); return CDIN_BACKEND_NO_MEMORY;
@@ -146,7 +166,9 @@ cdin_backend_status cdin_lua_host_start(cdin_backend *backend, cdin_lua_host **o
                            message != NULL ? message : "no Lua error message was provided");
         if (host->runtime_ref != LUA_NOREF) luaL_unref(host->state, LUA_REGISTRYINDEX, host->runtime_ref);
         if (host->host_ref != LUA_NOREF) luaL_unref(host->state, LUA_REGISTRYINDEX, host->host_ref);
-        lua_close(host->state); free(host);
+        lua_close(host->state);
+        cdin_lua_host_extension_resolver_destroy(host);
+        free(host);
         return CDIN_BACKEND_INVALID_STATE;
     }
     *out_host = host;
@@ -229,6 +251,7 @@ void cdin_lua_host_destroy(cdin_lua_host *host)
         if (host->host_ref != LUA_NOREF) luaL_unref(host->state, LUA_REGISTRYINDEX, host->host_ref);
         lua_close(host->state);
     }
+    cdin_lua_host_extension_resolver_destroy(host);
     free(host);
 }
 #endif
