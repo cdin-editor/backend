@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 
 #if LUA_VERSION_NUM < 504
 #error "CDIN Backend requires Lua 5.4"
@@ -68,6 +69,20 @@ struct cdin_lua_host {
     int latest_ui_ref;
     size_t next_protocol_client;
     int started;
+    /* Optional Backend-owned extension resolver state. Disabled unless an
+     * explicit extension_source_root was configured by the application. */
+    char *extension_root_path;
+#ifdef _WIN32
+    wchar_t *extension_root_wide;
+    void *extension_root_handle;
+#else
+    int extension_root_fd;
+#endif
+    uint64_t extension_source_limit;
+    uint64_t extension_source_total_limit;
+    uint64_t extension_source_total;
+    uint32_t extension_module_limit;
+    uint32_t extension_module_count;
 };
 
 typedef struct cdin_lua_error_details {
@@ -156,5 +171,8 @@ int lua_writer_gc(lua_State *L);
 int lua_process_gc(lua_State *L);
 
 void cdin_lua_register_host(cdin_lua_host *host);
+cdin_backend_status cdin_lua_host_extension_resolver_init(cdin_lua_host *host);
+void cdin_lua_host_extension_resolver_destroy(cdin_lua_host *host);
+int lua_extension_module_resolver(lua_State *L);
 
 #endif
