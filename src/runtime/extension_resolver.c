@@ -187,7 +187,11 @@ static resolver_result verify_handle_path(const cdin_lua_host *host, HANDLE hand
     required = GetFinalPathNameByHandleW(handle, NULL, 0u,
                                          FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
     if (required == 0u) return RESOLVER_IO;
+    /* DWORD is 32-bit. On 64-bit Windows every DWORD count fits in size_t;
+     * keep the overflow guard only where size_t can be narrower. */
+#if SIZE_MAX <= UINT32_MAX
     if ((size_t)required > SIZE_MAX / sizeof(wchar_t) - 1u) return RESOLVER_LIMIT;
+#endif
     final_path = (wchar_t *)calloc((size_t)required + 1u, sizeof(wchar_t));
     if (final_path == NULL) return RESOLVER_NO_MEMORY;
     written = GetFinalPathNameByHandleW(handle, final_path, required + 1u,
@@ -683,10 +687,16 @@ cdin_backend_status cdin_lua_host_extension_resolver_init(cdin_lua_host *host)
         }
         required = GetFinalPathNameByHandleW(handle, NULL, 0u,
                                              FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
-        if (required == 0u || (size_t)required > SIZE_MAX / sizeof(wchar_t) - 1u) {
+        if (required == 0u) {
             CloseHandle(handle);
             return CDIN_BACKEND_IO_ERROR;
         }
+#if SIZE_MAX <= UINT32_MAX
+        if ((size_t)required > SIZE_MAX / sizeof(wchar_t) - 1u) {
+            CloseHandle(handle);
+            return CDIN_BACKEND_IO_ERROR;
+        }
+#endif
         canonical = (wchar_t *)calloc((size_t)required + 1u, sizeof(wchar_t));
         if (canonical == NULL) {
             CloseHandle(handle);
