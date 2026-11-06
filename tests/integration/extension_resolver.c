@@ -311,16 +311,25 @@ static int test_resolver(void)
     }
 
 #ifndef _WIN32
-    /* POSIX can represent case-folding collisions. Reject both spellings
-     * rather than choosing one based on directory enumeration order. */
+    /* Case-fold collisions exist only when the filesystem can create two
+     * distinct directory entries for these spellings. Default macOS volumes
+     * are commonly case-insensitive, where the second write aliases the first
+     * and must not be mistaken for a collision. */
     {
         char upper_path[768], lower_path[768];
+        struct stat upper_info, lower_info;
         if (join_path(upper_path, sizeof(upper_path), demo, "Case.lua") == 0 &&
             join_path(lower_path, sizeof(lower_path), demo, "case.lua") == 0 &&
             write_bytes(upper_path, small_source, sizeof(small_source) - 1u) == 0 &&
-            write_bytes(lower_path, small_source, sizeof(small_source) - 1u) == 0) {
+            write_bytes(lower_path, small_source, sizeof(small_source) - 1u) == 0 &&
+            stat(upper_path, &upper_info) == 0 &&
+            stat(lower_path, &lower_info) == 0 &&
+            (upper_info.st_dev != lower_info.st_dev ||
+             upper_info.st_ino != lower_info.st_ino)) {
             collision_created = 1;
             if (resolve_module(L, resolver_ref, "demo", "Case",
+                               NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR ||
+                resolve_module(L, resolver_ref, "demo", "case",
                                NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR) {
                 goto cleanup_host_and_tree;
             }
