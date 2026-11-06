@@ -142,7 +142,7 @@ Kernel and OS service tests possible without pulling Lua into every Backend
 consumer.
 
 The bridge mechanism remains a Spec open decision, not a permanent public ABI
-choice. Spec ADR-0019 selects the PUC Lua 5.4 C API: https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0019-runtime-bridge.md.
+choice. Spec ADR-0019 selects [the PUC Lua 5.4 C API](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0019-runtime-bridge.md).
 
 ## 8. Removing downloaded files
 
