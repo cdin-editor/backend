@@ -60,6 +60,9 @@ void cdin_backend_config_init(cdin_backend_config *config)
     config->log_level = CDIN_BACKEND_LOG_INFO;
     config->log_output = CDIN_BACKEND_LOG_OUTPUT_STDERR;
     config->max_log_message_bytes = 16u * 1024u;
+    config->extension_source_root = NULL;
+    config->max_extension_source_bytes = 256u * 1024u;
+    config->max_extension_modules = 128u;
 }
 
 static cdin_backend_status config_copy(const cdin_backend_config *input,
@@ -94,6 +97,13 @@ static cdin_backend_status config_copy(const cdin_backend_config *input,
         out->max_snapshot_bytes < out->max_message_bytes ||
         out->max_snapshot_bytes > CDIN_BACKEND_MAX_SNAPSHOT_BYTES ||
         out->max_log_message_bytes > 1024u * 1024u ||
+        out->max_extension_source_bytes == 0u ||
+        out->max_extension_source_bytes > 1024u * 1024u ||
+        out->max_extension_modules == 0u || out->max_extension_modules > 256u ||
+        out->max_extension_source_bytes >
+            (UINT64_C(64) * 1024u * 1024u) / (uint64_t)out->max_extension_modules ||
+        (out->extension_source_root != NULL &&
+         (out->extension_source_root[0] == '\0' || out->enable_lua == 0)) ||
         out->enable_lua < 0 || out->enable_lua > 1 ||
         out->enable_headless_protocol < 0 || out->enable_headless_protocol > 1 ||
         (out->enable_lua != 0 && out->enable_headless_protocol != 0 &&
@@ -137,6 +147,16 @@ cdin_backend_status cdin_backend_create(const cdin_backend_config *config,
     if (backend == NULL) return CDIN_BACKEND_NO_MEMORY;
     status = config_copy(config, &backend->config, &backend->runtime_root, &backend->runtime_entry);
     if (status != CDIN_BACKEND_OK) { free(backend); return status; }
+    if (backend->config.extension_source_root != NULL) {
+        char *extension_root = cdin_backend_strdup(backend->config.extension_source_root);
+        if (extension_root == NULL) {
+            free(backend->runtime_entry);
+            free(backend->runtime_root);
+            free(backend);
+            return CDIN_BACKEND_NO_MEMORY;
+        }
+        backend->config.extension_source_root = extension_root;
+    }
 #ifdef _WIN32
     backend->owner_thread = GetCurrentThreadId();
 #else
@@ -152,6 +172,7 @@ cdin_backend_status cdin_backend_create(const cdin_backend_config *config,
                                      backend->config.max_log_message_bytes, backend->config.log_callback,
                                      backend->config.log_context, &backend->kernel);
     if (status != CDIN_BACKEND_OK) {
+        free((char *)backend->config.extension_source_root);
         free(backend->runtime_entry); free(backend->runtime_root); free(backend);
         return status;
     }
@@ -368,6 +389,7 @@ void cdin_backend_destroy(cdin_backend *backend)
     if (backend->runtime != NULL) cdin_lua_host_destroy(backend->runtime);
     if (backend->session != NULL) cdin_session_destroy(backend->session);
     if (backend->kernel != NULL) cdin_kernel_host_destroy(backend->kernel);
+    free((char *)backend->config.extension_source_root);
     free(backend->runtime_entry);
     free(backend->runtime_root);
     free(backend);
