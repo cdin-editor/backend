@@ -290,18 +290,32 @@ if(BUILD_TESTING)
         add_test(NAME backend_integration_kernel_document
                  COMMAND cdin_backend_integration_kernel_document)
 
+        if(CDIN_WITH_LUA)
+            add_executable(cdin_backend_integration_extension_resolver
+                tests/integration/extension_resolver.c)
+            target_include_directories(cdin_backend_integration_extension_resolver PRIVATE
+                src ${LUA_INCLUDE_DIR})
+            target_link_libraries(cdin_backend_integration_extension_resolver PRIVATE
+                cdin::backend ${LUA_LIBRARIES})
+            cdin_enable_strict_test_warnings(cdin_backend_integration_extension_resolver)
+            add_test(NAME backend_integration_extension_resolver
+                     COMMAND cdin_backend_integration_extension_resolver)
+        endif()
+
         # Keep integration executables runnable without global loader changes.
         if(UNIX)
             set_target_properties(
                 cdin_backend_integration_session
                 cdin_backend_integration_kernel_document
+                cdin_backend_integration_extension_resolver
                 PROPERTIES BUILD_RPATH "${CDIN_KERNEL_LIBDIR}")
         elseif(WIN32)
             file(GLOB CDIN_KERNEL_RUNTIME_DLLS "${CDIN_KERNEL_BINDIR}/*.dll")
             if(CDIN_KERNEL_RUNTIME_DLLS)
                 foreach(integration_target IN ITEMS
                     cdin_backend_integration_session
-                    cdin_backend_integration_kernel_document)
+                    cdin_backend_integration_kernel_document
+                    cdin_backend_integration_extension_resolver)
                     add_custom_command(TARGET ${integration_target} POST_BUILD
                         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                             ${CDIN_KERNEL_RUNTIME_DLLS}
