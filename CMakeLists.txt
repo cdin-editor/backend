@@ -295,6 +295,10 @@ if(BUILD_TESTING)
                 tests/integration/extension_resolver.c)
             target_include_directories(cdin_backend_integration_extension_resolver PRIVATE
                 src ${LUA_INCLUDE_DIR})
+            # The resolver integration test intentionally includes private
+            # Lua-host structs to exercise owner-thread lifecycle boundaries.
+            # Mirror the Backend's feature define on this test translation unit.
+            target_compile_definitions(cdin_backend_integration_extension_resolver PRIVATE CDIN_WITH_LUA)
             target_link_libraries(cdin_backend_integration_extension_resolver PRIVATE
                 cdin::backend ${LUA_LIBRARIES})
             cdin_enable_strict_test_warnings(cdin_backend_integration_extension_resolver)
