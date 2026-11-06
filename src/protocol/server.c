@@ -225,8 +225,28 @@ cdin_backend_status cdin_protocol_attach(cdin_protocol_client *client)
     if (!client->greeted) return CDIN_BACKEND_INVALID_STATE;
     if (client->attached) return CDIN_BACKEND_INVALID_STATE;
     client->attached = 1;
-    if (client->server->driver_client_id == 0u && client->driver) {
-        client->server->driver_client_id = client->id;
+    if (client->server->driver_client_id == 0u) {
+        if (client->driver) {
+            /* Preserve a driver lease reserved by this connection's HELLO_ACK. */
+            client->server->driver_client_id = client->id;
+        } else if ((client->accepted_capabilities & CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS) != 0u) {
+            cdin_backend_status role_status;
+            if (client->next_message_sequence == UINT64_MAX) {
+                client->attached = 0;
+                return CDIN_BACKEND_LIMIT_EXCEEDED;
+            }
+            /* Reattached capable Frontends can acquire an otherwise-free lease,
+             * but only after an ordered role event can be queued for them. */
+            client->driver = 1;
+            client->server->driver_client_id = client->id;
+            role_status = queue_driver_role_event(client, client->next_message_sequence + 1u);
+            if (role_status != CDIN_BACKEND_OK) {
+                client->driver = 0;
+                client->server->driver_client_id = 0u;
+                client->attached = 0;
+                return role_status;
+            }
+        }
     } else if (client->server->driver_client_id != client->id) {
         client->driver = 0;
     }
