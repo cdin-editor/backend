@@ -81,6 +81,33 @@ callback is not a Frontend Protocol command and does not grant a remote Driver
 permission to load local code. An application exposing extension management
 must provide a separate local administrative authorization boundary.
 
+
+## Trusted application lifecycle API
+
+The C embedding API exposes the Runtime's existing local extension lifecycle
+without adding a wire command:
+
+- `cdin_backend_extension_load(backend, name)` resolves and loads one named
+  extension through the configured root. It returns only a Backend status;
+  module tables, source bytes and sandbox objects remain private to Runtime.
+- `cdin_backend_extension_unload(backend, name)` invokes the extension's
+  explicit unload hook and removes its owner-scoped registrations.
+- Both calls are synchronous, require a running Backend, and must execute on
+  the Backend/Runtime owner thread. They return `INVALID_STATE` from another
+  thread or outside the running lifecycle.
+- Loading returns `UNSUPPORTED` unless Lua is active and
+  `extension_source_root` was explicitly configured. A missing entry returns
+  `NOT_FOUND`; a failed extension initialization is returned as an internal
+  failure after Runtime has rolled back its registrations.
+- Unloading an unknown name returns `NOT_FOUND`.
+
+These APIs are an application/embedding boundary, not a remote command
+surface. A CDIN CLI, bundle manager or other local administrative interface
+may call them after applying its own authorization policy. The Backend does
+not automatically discover or load every directory below the extension root.
+An empty root therefore remains an empty extension set unless the trusted
+application explicitly requests a name.
+
 ## Verification
 
 The Backend integration scenario exercises exact source bytes (including NUL
