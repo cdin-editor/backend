@@ -1,3 +1,8 @@
+#ifndef _WIN32
+#define _GNU_SOURCE 1
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "backend_internal.h"
 #include "runtime/lua_host_internal.h"
 
