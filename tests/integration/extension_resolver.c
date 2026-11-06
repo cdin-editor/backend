@@ -123,6 +123,39 @@ static resolver_call_status resolve_module(lua_State *L, int resolver_ref,
     return result;
 }
 
+/* Force a deterministic open/read failure without relying on administrator
+ * permissions. Windows holds an exclusive read handle; POSIX removes all
+ * read bits and confirms the current test identity cannot reopen the file.
+ * A privileged POSIX runner skips only this permission-dependent assertion. */
+static int test_read_failure(lua_State *L, int resolver_ref, const char *path)
+{
+#ifdef _WIN32
+    HANDLE exclusive = CreateFileA(path, GENERIC_READ, 0u, NULL, OPEN_EXISTING,
+                                   FILE_ATTRIBUTE_NORMAL, NULL);
+    resolver_call_status status;
+    if (exclusive == INVALID_HANDLE_VALUE) return -1;
+    status = resolve_module(L, resolver_ref, "demo", "read_failure",
+                            NULL, 0u, NULL, "IO_ERROR");
+    CloseHandle(exclusive);
+    return status == RESOLVER_CALL_ERROR ? 0 : -1;
+#else
+    struct stat info;
+    int probe;
+    resolver_call_status status;
+    if (stat(path, &info) != 0 || chmod(path, 0000) != 0) return -1;
+    probe = open(path, O_RDONLY);
+    if (probe >= 0) {
+        close(probe);
+        (void)chmod(path, info.st_mode & 0777);
+        return 0; /* root/capability-enabled runners cannot exercise EACCES */
+    }
+    status = resolve_module(L, resolver_ref, "demo", "read_failure",
+                            NULL, 0u, NULL, "IO_ERROR");
+    (void)chmod(path, info.st_mode & 0777);
+    return status == RESOLVER_CALL_ERROR ? 0 : -1;
+#endif
+}
+
 static int setup_host(cdin_backend *backend, cdin_lua_host *host, const char *root,
                       uint64_t source_limit, uint32_t module_limit)
 {
@@ -217,7 +250,7 @@ static int test_resolver(void)
 {
     char temp[512] = { 0 };
     char root[640], demo[640], helpers[640], large[640], outside[640];
-    char path[768], link_path[768], secret_file[768];
+    char path[768], link_path[768], secret_file[768], read_failure_path[768];
     static const char init_source[] = "return { init = function() end }";
     static const char greeting_source[] = "return { value = 'hello' }\n";
     static const char small_source[] = "return true\n";
@@ -238,6 +271,7 @@ static int test_resolver(void)
         join_path(large, sizeof(large), demo, "large") != 0 ||
         join_path(outside, sizeof(outside), temp, "outside") != 0 ||
         join_path(secret_file, sizeof(secret_file), outside, "secret.lua") != 0 ||
+        join_path(read_failure_path, sizeof(read_failure_path), demo, "read_failure.lua") != 0 ||
         make_dir(root) != 0 || make_dir(demo) != 0 ||
         make_dir(helpers) != 0 || make_dir(large) != 0 || make_dir(outside) != 0) {
         (void)fprintf(stderr, "could not create extension resolver test tree\n");
@@ -255,6 +289,7 @@ static int test_resolver(void)
         join_path(path, sizeof(path), demo, "binary.lua") != 0 ||
         write_bytes(path, binary_source, sizeof(binary_source)) != 0 ||
         write_bytes(secret_file, small_source, sizeof(small_source) - 1u) != 0 ||
+        write_bytes(read_failure_path, small_source, sizeof(small_source) - 1u) != 0 ||
         join_path(path, sizeof(path), large, "another.lua") != 0 ||
         write_bytes(path, small_source, sizeof(small_source) - 1u) != 0) {
         (void)fprintf(stderr, "could not create extension resolver test modules\n");
@@ -272,6 +307,11 @@ static int test_resolver(void)
     resolver_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
     if (resolve_module(L, resolver_ref, "demo", "init",
+                       (const uint8_t *)init_source, sizeof(init_source) - 1u,
+                       "extension://demo/init", NULL) != RESOLVER_CALL_OK ||
+        /* Every successful resolver callback consumes one read slot, even
+         * when Runtime asks for the same module name more than once. */
+        resolve_module(L, resolver_ref, "demo", "init",
                        (const uint8_t *)init_source, sizeof(init_source) - 1u,
                        "extension://demo/init", NULL) != RESOLVER_CALL_OK ||
         resolve_module(L, resolver_ref, "demo", "helpers.greeting",
@@ -310,7 +350,17 @@ static int test_resolver(void)
         goto cleanup_host_and_tree;
     }
 
-#ifndef _WIN32
+#ifdef _WIN32
+    /* Windows filesystems normally fold case. The resolver must reject a
+     * request whose spelling differs from the one actually stored. */
+    if (join_path(path, sizeof(path), demo, "Case.lua") != 0 ||
+        write_bytes(path, small_source, sizeof(small_source) - 1u) != 0 ||
+        resolve_module(L, resolver_ref, "demo", "case",
+                       NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR) {
+        goto cleanup_host_and_tree;
+    }
+    collision_created = 1;
+#else
     /* Case-fold collisions exist only when the filesystem can create two
      * distinct directory entries for these spellings. Default macOS volumes
      * are commonly case-insensitive, where the second write aliases the first
@@ -337,14 +387,15 @@ static int test_resolver(void)
     }
 #endif
 
-    /* Four successful reads exhaust the configured per-host module-count
-     * cap. Failed and missing reads do not consume a module slot. */
+    if (test_read_failure(L, resolver_ref, read_failure_path) != 0) {
+        (void)fprintf(stderr, "resolver did not report a deterministic read failure\n");
+        goto cleanup_host_and_tree;
+    }
+
+    /* Four successful reads are init, repeated init, nested greeting and
+     * binary source. Missing, oversized and unreadable reads consume no slot. */
     if (resolve_module(L, resolver_ref, "demo", "large.small",
-                       (const uint8_t *)small_source, sizeof(small_source) - 1u,
-                       "extension://demo/large.small", NULL) != RESOLVER_CALL_OK ||
-        resolve_module(L, resolver_ref, "demo", "large.another",
-                       (const uint8_t *)small_source, sizeof(small_source) - 1u,
-                       "extension://demo/large.another", "LIMIT_EXCEEDED") != RESOLVER_CALL_ERROR) {
+                       NULL, 0u, NULL, "LIMIT_EXCEEDED") != RESOLVER_CALL_ERROR) {
         goto cleanup_host_and_tree;
     }
 
@@ -370,6 +421,8 @@ static int test_resolver(void)
     (void)join_path(path, sizeof(path), large, "another.lua"); (void)remove_file(path);
     (void)join_path(path, sizeof(path), demo, "binary.lua"); (void)remove_file(path);
     (void)remove_file(secret_file);
+    (void)chmod(read_failure_path, 0600);
+    (void)remove_file(read_failure_path);
     (void)join_path(link_path, sizeof(link_path), demo, "linked.lua");
     (void)join_path(path, sizeof(path), demo, "Case.lua");
     (void)remove_file(path);
@@ -393,6 +446,6 @@ cleanup_temp:
 int main(void)
 {
     if (test_resolver() != 0) return 1;
-    puts("PASS extension_resolver: bounded owner-scoped loading, virtual chunk names, exact bytes, traversal denial and module-count limits");
+    puts("PASS extension_resolver: confined paths, exact bytes, case-fold rejection, repeated-read accounting, deterministic read failures and bounded source limits");
     return 0;
 }
