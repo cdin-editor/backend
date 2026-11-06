@@ -157,7 +157,10 @@ cdin_backend_status cdin_lua_host_start(cdin_backend *backend, cdin_lua_host **o
     }
     luaL_openlibs(host->state);
     if (set_package_path(host->state, backend->runtime_root) != 0) {
-        lua_close(host->state); free(host); return CDIN_BACKEND_NO_MEMORY;
+        lua_close(host->state);
+        cdin_lua_host_extension_resolver_destroy(host);
+        free(host);
+        return CDIN_BACKEND_NO_MEMORY;
     }
     cdin_lua_register_host(host);
     if (runtime_load_and_start(host) != 0) {
