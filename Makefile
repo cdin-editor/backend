@@ -73,7 +73,10 @@ SERVICE_SRC := $(sort $(wildcard src/jobs/*.c) $(wildcard src/os/*.c) $(wildcard
 PROTOCOL_SRC := src/protocol/codec.c
 PROTOCOL_OBJ := $(patsubst src/%.c,$(BUILD_DIR)/obj/protocol/%.o,$(PROTOCOL_SRC))
 PROTOCOL_LIB := $(BUILD_DIR)/libcdin_protocol.a
-BACKEND_SRC := src/backend.c src/core/status.c src/diagnostics/log.c $(sort $(wildcard src/kernel/*.c) $(filter-out src/protocol/codec.c,$(wildcard src/protocol/*.c)) $(wildcard src/runtime/*.c) $(wildcard src/session/*.c))
+BACKEND_SRC := src/backend.c src/core/status.c src/diagnostics/log.c $(sort $(wildcard src/kernel/*.c) $(filter-out src/protocol/codec.c,$(wildcard src/protocol/*.c)) $(filter-out src/runtime/extension_resolver.c,$(wildcard src/runtime/*.c)) $(wildcard src/session/*.c))
+ifneq ($(strip $(LUA_CPPFLAGS)),)
+  BACKEND_SRC += src/runtime/extension_resolver.c
+endif
 SERVICE_OBJ := $(patsubst src/%.c,$(BUILD_DIR)/obj/services/%.o,$(SERVICE_SRC))
 BACKEND_OBJ := $(patsubst src/%.c,$(BUILD_DIR)/obj/backend/%.o,$(BACKEND_SRC))
 SERVICE_LIB := $(BUILD_DIR)/libcdin_backend_services.a
@@ -87,6 +90,7 @@ E2E_FS := $(BUILD_DIR)/e2e/platform_file_workflow
 E2E_PROCESS := $(BUILD_DIR)/e2e/process_supervision
 INTEGRATION_BIN := $(BUILD_DIR)/integration/backend_session
 INTEGRATION_KERNEL_BIN := $(BUILD_DIR)/integration/kernel_document_workflow
+INTEGRATION_RESOLVER_BIN := $(BUILD_DIR)/integration/extension_resolver
 EXAMPLE_BACKUP_BIN := $(BUILD_DIR)/examples/atomic-backup
 
 .PHONY: all services protocol protocol-test library require-kernel deps build e2e integration runtime-integration stress benchmark examples example-atomic-backup check test lint boundary info clean
@@ -173,6 +177,13 @@ $(INTEGRATION_KERNEL_BIN): tests/integration/kernel_document_workflow.c $(BACKEN
 	$(CC) $(BASE_CPPFLAGS) -Isrc $(PLATFORM_CPPFLAGS) $(KERNEL_CFLAGS) $(CFLAGS) $< \
 	  $(BACKEND_LIB) $(SERVICE_LIB) $(PROTOCOL_LIB) $(KERNEL_LIBS) $(LUA_LIBS) $(THREAD_LIBS) -o $@
 
+ifneq ($(strip $(LUA_CPPFLAGS)),)
+$(INTEGRATION_RESOLVER_BIN): tests/integration/extension_resolver.c $(BACKEND_LIB) $(SERVICE_LIB) $(PROTOCOL_LIB) | require-kernel
+	@mkdir -p $(@D)
+	$(CC) $(BASE_CPPFLAGS) -Isrc $(PLATFORM_CPPFLAGS) $(KERNEL_CFLAGS) $(LUA_CPPFLAGS) $(CFLAGS) $< \
+	  $(BACKEND_LIB) $(SERVICE_LIB) $(PROTOCOL_LIB) $(KERNEL_LIBS) $(LUA_LIBS) $(THREAD_LIBS) -o $@
+endif
+
 $(EXAMPLE_BACKUP_BIN): examples/atomic-backup/main.c $(SERVICE_LIB)
 	@mkdir -p $(@D)
 	$(CC) $(BASE_CPPFLAGS) $(PLATFORM_CPPFLAGS) $(CFLAGS) $< $(SERVICE_LIB) -o $@ $(THREAD_LIBS)
@@ -186,9 +197,17 @@ e2e: protocol-test $(E2E_JOB) $(E2E_ABORT) $(E2E_FS) $(E2E_PROCESS)
 	$(E2E_FS)
 	$(E2E_PROCESS) "$(abspath $(CHILD_BIN))"
 
-integration: $(INTEGRATION_BIN) $(INTEGRATION_KERNEL_BIN)
+INTEGRATION_TARGETS := $(INTEGRATION_BIN) $(INTEGRATION_KERNEL_BIN)
+ifneq ($(strip $(LUA_CPPFLAGS)),)
+  INTEGRATION_TARGETS += $(INTEGRATION_RESOLVER_BIN)
+endif
+
+integration: $(INTEGRATION_TARGETS)
 	bash scripts/run-with-kernel-libs.sh "$(INTEGRATION_BIN)"
 	bash scripts/run-with-kernel-libs.sh "$(INTEGRATION_KERNEL_BIN)"
+ifneq ($(strip $(LUA_CPPFLAGS)),)
+	bash scripts/run-with-kernel-libs.sh "$(INTEGRATION_RESOLVER_BIN)"
+endif
 
 # Additional release-readiness checks; not part of the default fast E2E gate.
 stress:
