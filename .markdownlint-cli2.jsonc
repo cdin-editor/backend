@@ -1,7 +1,8 @@
 {
   "config": {
     "MD013": {
-      "line_length": 500
+      "line_length": 500,
+      "tables": false
     },
     "MD024": {
       "siblings_only": true
