@@ -145,7 +145,7 @@ static void cleanup_host(cdin_lua_host *host)
 
 static int test_resolver(void)
 {
-    char temp[512];
+    char temp[512] = { 0 };
     char root[640], demo[640], helpers[640], large[640], outside[640];
     char path[768], link_path[768];
     static const char init_source[] = "return { init = function() end }";
@@ -205,6 +205,8 @@ static int test_resolver(void)
         resolve_module(L, resolver_ref, "demo", "helpers.greeting",
                        (const uint8_t *)greeting_source, sizeof(greeting_source) - 1u,
                        "extension://demo/helpers.greeting", NULL) != RESOLVER_CALL_OK ||
+        resolve_module(L, resolver_ref, "demo", "large.payload",
+                       NULL, 0u, NULL, "LIMIT_EXCEEDED") != RESOLVER_CALL_ERROR ||
         resolve_module(L, resolver_ref, "demo", "binary",
                        binary_source, sizeof(binary_source),
                        "extension://demo/binary", NULL) != RESOLVER_CALL_OK ||
@@ -225,6 +227,39 @@ static int test_resolver(void)
         goto cleanup_host_and_tree;
     }
 
+    if (join_path(path, sizeof(path), demo, "linked.lua") != 0) goto cleanup_host_and_tree;
+#ifdef _WIN32
+    if (CreateSymbolicLinkA(path, outside, 0u) ||
+        CreateSymbolicLinkA(path, outside, 0x2u)) {
+        symlink_created = 1;
+    }
+#else
+    if (symlink(outside, path) == 0) symlink_created = 1;
+#endif
+    if (symlink_created &&
+        resolve_module(L, resolver_ref, "demo", "linked",
+                       NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR) {
+        goto cleanup_host_and_tree;
+    }
+
+    /* POSIX can represent case-folding collisions. Windows commonly rejects
+     * the second create on a default case-insensitive directory, so this
+     * additional assertion runs only when both spellings coexist. */
+    {
+        char upper_path[768], lower_path[768];
+        if (join_path(upper_path, sizeof(upper_path), demo, "Case.lua") == 0 &&
+            join_path(lower_path, sizeof(lower_path), demo, "case.lua") == 0 &&
+            write_bytes(upper_path, small_source, sizeof(small_source) - 1u) == 0 &&
+            write_bytes(lower_path, small_source, sizeof(small_source) - 1u) == 0) {
+            collision_created = 1;
+            if (resolve_module(L, resolver_ref, "demo", "Case",
+                               NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR) {
+                goto cleanup_host_and_tree;
+            }
+        }
+    }
+    result = 0;
+
     cleanup_host_and_tree:
     if (resolver_ref != LUA_NOREF) luaL_unref(L, LUA_REGISTRYINDEX, resolver_ref);
     if (L != NULL) lua_close(L);
@@ -236,11 +271,12 @@ static int test_resolver(void)
     (void)join_path(path, sizeof(path), large, "small.lua"); (void)remove_file(path);
     (void)join_path(path, sizeof(path), demo, "binary.lua"); (void)remove_file(path);
     (void)join_path(path, sizeof(path), outside, "secret.lua"); (void)remove_file(path);
+    (void)join_path(link_path, sizeof(link_path), demo, "linked.lua");
     (void)join_path(path, sizeof(path), demo, "Case.lua");
     (void)remove_file(path);
     (void)join_path(path, sizeof(path), demo, "case.lua");
     (void)remove_file(path);
-    if (symlink_created) (void)remove_dir(link_path);
+    if (symlink_created) (void)remove_file(link_path);
     if (collision_created) {
         (void)join_path(path, sizeof(path), demo, "Case.lua"); (void)remove_file(path);
         (void)join_path(path, sizeof(path), demo, "case.lua"); (void)remove_file(path);
