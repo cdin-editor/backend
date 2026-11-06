@@ -459,7 +459,10 @@ static int ascii_component_match(const char *entry, const char *candidate)
 
 static resolver_result posix_check_exact_name(int directory_fd, const char *component)
 {
-    int duplicate = dup(directory_fd);
+    /* dup() would share the directory stream offset with directory_fd.
+     * Open "." relative to the owned descriptor to obtain an independent
+     * open-file description for every case-fold scan. */
+    int duplicate = openat(directory_fd, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     DIR *directory;
     struct dirent *entry;
     size_t folded_matches = 0u;
