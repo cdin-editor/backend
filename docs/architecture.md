@@ -58,7 +58,15 @@ The Session stores document identity and lifecycle metadata plus view-to-documen
 
 ### `protocol/`
 
-The Protocol module contains a transport-independent deterministic-CBOR codec, bounded per-client queues, sequence validation, driver/observer permissions, atomic flush groups and ACKs. The Lua Host bridge projects `cdin.ui-model.v1`, queues inbound Frontend events, dispatches them on the Lua owner thread and serves version-pinned `view.request_lines` from a Kernel Snapshot. [ADR-0018](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0018-frontend-protocol-wire.md) fixes the wire format and standalone codec location. Concrete socket/named-pipe transport remains outside this source snapshot; Runtime must first receive the companion Host API 1.0.0 patch.
+The Protocol module contains a transport-independent deterministic-CBOR codec, bounded
+per-client queues, sequence validation, driver/observer permissions, atomic flush groups and
+ACKs. The Lua Host bridge projects `cdin.ui-model.v1`, queues inbound Frontend events,
+dispatches them on the Lua owner thread and serves version-pinned `view.request_lines` from a
+Kernel Snapshot.
+[ADR-0018](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0018-frontend-protocol-wire.md)
+fixes the wire format and standalone codec location. Concrete socket/named-pipe transport
+remains outside this source snapshot; Runtime must first receive the companion Host API 1.0.0
+patch.
 
 ### `os/` and `platform/`
 
