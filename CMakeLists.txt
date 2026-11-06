@@ -307,15 +307,22 @@ if(BUILD_TESTING)
             set_target_properties(
                 cdin_backend_integration_session
                 cdin_backend_integration_kernel_document
-                cdin_backend_integration_extension_resolver
                 PROPERTIES BUILD_RPATH "${CDIN_KERNEL_LIBDIR}")
+            if(CDIN_WITH_LUA)
+                set_target_properties(cdin_backend_integration_extension_resolver
+                    PROPERTIES BUILD_RPATH "${CDIN_KERNEL_LIBDIR}")
+            endif()
         elseif(WIN32)
             file(GLOB CDIN_KERNEL_RUNTIME_DLLS "${CDIN_KERNEL_BINDIR}/*.dll")
             if(CDIN_KERNEL_RUNTIME_DLLS)
-                foreach(integration_target IN ITEMS
+                set(CDIN_BACKEND_INTEGRATION_TARGETS
                     cdin_backend_integration_session
-                    cdin_backend_integration_kernel_document
-                    cdin_backend_integration_extension_resolver)
+                    cdin_backend_integration_kernel_document)
+                if(CDIN_WITH_LUA)
+                    list(APPEND CDIN_BACKEND_INTEGRATION_TARGETS
+                        cdin_backend_integration_extension_resolver)
+                endif()
+                foreach(integration_target IN LISTS CDIN_BACKEND_INTEGRATION_TARGETS)
                     add_custom_command(TARGET ${integration_target} POST_BUILD
                         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                             ${CDIN_KERNEL_RUNTIME_DLLS}
