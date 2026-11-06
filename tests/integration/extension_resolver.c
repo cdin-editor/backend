@@ -148,6 +148,71 @@ static void cleanup_host(cdin_lua_host *host)
     cdin_lua_host_extension_resolver_destroy(host);
 }
 
+static int mock_runtime_load_extension(lua_State *L)
+{
+    const char *name = luaL_checkstring(L, 2);
+    if (strcmp(name, "missing") == 0) {
+        lua_createtable(L, 0, 1);
+        lua_pushliteral(L, "NOT_FOUND");
+        lua_setfield(L, -2, "code");
+        return lua_error(L);
+    }
+    lua_createtable(L, 0, 3);
+    lua_pushstring(L, name);
+    lua_setfield(L, -2, "name");
+    lua_pushliteral(L, "active");
+    lua_setfield(L, -2, "state");
+    lua_pushliteral(L, "resolver");
+    lua_setfield(L, -2, "source");
+    return 1;
+}
+
+static int mock_runtime_unload_extension(lua_State *L)
+{
+    const char *name = luaL_checkstring(L, 2);
+    lua_pushboolean(L, strcmp(name, "demo") == 0);
+    return 1;
+}
+
+static int test_trusted_runtime_extension_api(
+    cdin_backend *backend, cdin_lua_host *host, lua_State *L)
+{
+    int runtime_ref;
+    int result = -1;
+    if (backend == NULL || host == NULL || L == NULL) return -1;
+
+    lua_createtable(L, 0, 2);
+    lua_pushcfunction(L, mock_runtime_load_extension);
+    lua_setfield(L, -2, "load_extension");
+    lua_pushcfunction(L, mock_runtime_unload_extension);
+    lua_setfield(L, -2, "unload_extension");
+    runtime_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    host->state = L;
+    host->runtime_ref = runtime_ref;
+    host->started = 1;
+    backend->runtime = host;
+    backend->state = CDIN_BACKEND_STATE_RUNNING;
+
+    if (cdin_backend_extension_load(backend, "demo") != CDIN_BACKEND_OK ||
+        cdin_backend_extension_load(backend, "missing") != CDIN_BACKEND_NOT_FOUND ||
+        cdin_backend_extension_unload(backend, "demo") != CDIN_BACKEND_OK ||
+        cdin_backend_extension_unload(backend, "missing") != CDIN_BACKEND_NOT_FOUND ||
+        cdin_backend_extension_load(backend, "") != CDIN_BACKEND_INVALID_ARGUMENT) {
+        goto cleanup;
+    }
+    result = 0;
+
+cleanup:
+    backend->runtime = NULL;
+    backend->state = CDIN_BACKEND_STATE_CREATED;
+    host->started = 0;
+    host->state = NULL;
+    host->runtime_ref = LUA_NOREF;
+    luaL_unref(L, LUA_REGISTRYINDEX, runtime_ref);
+    return result;
+}
+
 static int test_resolver(void)
 {
     char temp[512] = { 0 };
@@ -223,6 +288,11 @@ static int test_resolver(void)
                        NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR ||
         resolve_module(L, resolver_ref, "demo", "../outside",
                        NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR) {
+        goto cleanup_host_and_tree;
+    }
+
+    if (test_trusted_runtime_extension_api(&backend, &host, L) != 0) {
+        (void)fprintf(stderr, "trusted Runtime extension lifecycle API failed\n");
         goto cleanup_host_and_tree;
     }
 
