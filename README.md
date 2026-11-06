@@ -42,7 +42,7 @@ Kernel header.
 
 ## Current status
 
-This repository contains Backend library version 1.0.2, the shared Frontend Protocol 1.0.0
+This repository contains Backend library version 1.1.0, the shared Frontend Protocol 1.0.0
 codec/server, reusable OS/job services, Kernel adapter, PUC Lua 5.4 bridge,
 Runtime UI-model projection, owner-thread inbound event dispatcher,
 version-pinned line-read service, Headless Frontend harness and integration
@@ -145,6 +145,9 @@ private logger link requirements together.
 - A single Kernel ABI adapter with ABI/feature checks, handle mapping and error
   detail translation.
 - A Runtime Host bridge, with Lua state owned by the Backend's creating thread.
+- An optional trusted extension source resolver, disabled unless an application
+  configures an administrator-managed root; nested modules remain confined to
+  each extension namespace and source/module/aggregate reads are bounded.
 - Bounded worker queues and owner-thread completion delivery.
 - Portable path, bounded binary-safe file reads, atomic filesystem writes, clock, thread and argument-vector process services.
 - In-process Frontend handshake, Driver/Observer roles, bounded input/output
@@ -170,6 +173,7 @@ handshakes or shutdown.
 | [Dependencies](docs/dependencies.md) | Download, checksum verification and linking of the Kernel binary package. |
 | [Architecture](docs/architecture.md) | Module ownership, thread model and lifecycle. |
 | [Runtime Host API](docs/host-api.md) | Services exposed to the Lua Runtime. |
+| [Extension resolver](docs/extension-resolver.md) | Trusted extension source layout, path confinement, opt-in configuration and read limits. |
 | [Frontend Protocol](docs/frontend-protocol.md) | Message schemas, UI projection, inbound dispatch, line reads and transport limits. |
 | [OS services](docs/os-services.md) | Files, paths, processes, jobs, clocks and thread primitives. |
 | [Reuse services](docs/reusing-services.md) | Use the standalone `cdin_backend_services` library in other projects. |
