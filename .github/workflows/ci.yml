@@ -20,8 +20,17 @@ jobs:
       pipeline-ref: main
 
   docs:
-    name: Documentation and workflow validation
-    uses: m-mdy-m/pipeline/.github/workflows/docs-check.yml@main
+    name: Documentation lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install Markdown linter
+        run: npm install --global markdownlint-cli2
+      - name: Lint Markdown
+        run: bash scripts/lint-docs.sh
 
   platform-smoke:
     name: ${{ matrix.os }} native build, Kernel + Lua resolver integration
@@ -60,20 +69,21 @@ jobs:
         shell: msys2 {0}
         run: bash scripts/install-deps.sh
       - if: matrix.os != 'windows-latest'
-        name: Strict build and tests
+        name: Build Backend with Lua 5.4 and strict warnings
         shell: bash
-        run: make check
+        run: make clean && make WITH_LUA=1 all
       - if: matrix.os == 'windows-latest'
-        name: Strict build and tests
-        shell: msys2 {0}
-        run: make check
-      - if: matrix.os != 'windows-latest'
-        name: Run Lua 5.4 extension resolver integration
-        shell: bash
-        run: make WITH_LUA=1 integration
-      - if: matrix.os == 'windows-latest'
-        name: Run Lua 5.4 extension resolver integration
+        name: Build Backend with Lua 5.4 and strict warnings
         shell: msys2 {0}
         run: |
           pkg-config --modversion lua5.4
-          make WITH_LUA=1 integration
+          make clean
+          make WITH_LUA=1 all
+      - if: matrix.os != 'windows-latest'
+        name: Run Backend, Kernel and extension resolver integration
+        shell: bash
+        run: make WITH_LUA=1 integration
+      - if: matrix.os == 'windows-latest'
+        name: Run Backend, Kernel and extension resolver integration
+        shell: msys2 {0}
+        run: make WITH_LUA=1 integration
