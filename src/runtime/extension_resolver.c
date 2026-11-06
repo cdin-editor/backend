@@ -56,7 +56,7 @@ static int valid_plugin_name(const char *value)
         strstr(value, "..") != NULL) return 0;
     for (i = 0u; i < length; i++) {
         unsigned char ch = (unsigned char)value[i];
-        if (!(isalnum(ch) || ch == '_' || ch == '-' || ch == '.')) return 0;
+        if (ch >= 0x80u || !(isalnum(ch) || ch == '_' || ch == '-' || ch == '.')) return 0;
     }
     return 1;
 }
@@ -317,7 +317,6 @@ static resolver_result windows_read_module(cdin_lua_host *host,
     wchar_t *current = NULL;
     wchar_t *next = NULL;
     wchar_t *file_path = NULL;
-    wchar_t *segment_copy = NULL;
     size_t module_length = strlen(module);
     size_t start = 0u;
     size_t offset = 0u;
@@ -440,7 +439,6 @@ done:
     free(current);
     free(next);
     free(file_path);
-    free(segment_copy);
     if (result != RESOLVER_OK) {
         free(source);
         return result;
@@ -642,6 +640,15 @@ cdin_backend_status cdin_lua_host_extension_resolver_init(cdin_lua_host *host)
     const char *configured_root;
     if (host == NULL || host->backend == NULL) return CDIN_BACKEND_INVALID_ARGUMENT;
     configured_root = host->backend->config.extension_source_root;
+#ifdef _WIN32
+    host->extension_root_handle = NULL;
+    host->extension_root_wide = NULL;
+#else
+    host->extension_root_fd = -1;
+#endif
+    host->extension_root_path = NULL;
+    host->extension_source_total = 0u;
+    host->extension_module_count = 0u;
     host->extension_source_limit = host->backend->config.max_extension_source_bytes;
     host->extension_module_limit = host->backend->config.max_extension_modules;
     host->extension_source_total_limit =
