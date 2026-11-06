@@ -725,10 +725,12 @@ cdin_backend_status cdin_lua_host_extension_resolver_init(cdin_lua_host *host)
         host->extension_root_fd = descriptor;
     }
 #endif
-    CDIN_BACKEND_INFO(host->backend->kernel, "RUNTIME",
-                      "extension resolver enabled source_limit=%llu module_limit=%u",
-                      (unsigned long long)host->extension_source_limit,
-                      (unsigned)host->extension_module_limit);
+    if (host->backend->kernel != NULL) {
+        CDIN_BACKEND_INFO(host->backend->kernel, "RUNTIME",
+                          "extension resolver enabled source_limit=%llu module_limit=%u",
+                          (unsigned long long)host->extension_source_limit,
+                          (unsigned)host->extension_module_limit);
+    }
     return CDIN_BACKEND_OK;
 }
 
