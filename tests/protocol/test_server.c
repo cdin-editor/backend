@@ -379,6 +379,25 @@ static void test_driver_role_notification_is_capability_gated(void)
     assert(cdin_protocol_consume_control_message(observer) == CDIN_BACKEND_OK);
     assert(cdin_protocol_pending_messages(observer) == 0u);
 
+    /* A capable detached client can reacquire an otherwise-free lease only
+     * when the new role is queued before Backend accepts driver input. */
+    assert(cdin_protocol_detach(observer) == CDIN_BACKEND_OK);
+    assert(!cdin_protocol_can_mutate(observer));
+    assert(cdin_protocol_attach(observer) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_can_mutate(observer));
+    assert(cdin_protocol_pending_messages(observer) == 1u);
+    assert(cdin_protocol_message_at(observer, 0u, &event) == CDIN_BACKEND_OK);
+    assert(event.type == CDIN_PROTOCOL_DRIVER_ROLE_CHANGED);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_DRIVER_ROLE_CHANGED,
+                                          event.payload, event.payload_length) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_payload_get_uint(event.payload, event.payload_length,
+                                           "epoch", &epoch) == CDIN_BACKEND_OK);
+    assert(epoch == event.sequence && epoch == 3u);
+    assert(cdin_protocol_payload_get_bool(event.payload, event.payload_length,
+                                           "driver", &is_driver) == CDIN_BACKEND_OK);
+    assert(is_driver == 1);
+    assert(cdin_protocol_consume_control_message(observer) == CDIN_BACKEND_OK);
+
     assert(cdin_protocol_client_close(observer) == CDIN_BACKEND_OK);
     cdin_protocol_server_destroy(server);
 }
