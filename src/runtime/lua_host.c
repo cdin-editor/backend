@@ -49,6 +49,26 @@ void cdin_lua_host_destroy(cdin_lua_host *host)
 {
     (void)host;
 }
+
+cdin_backend_status cdin_backend_extension_load(cdin_backend *backend,
+                                                const char *extension_name)
+{
+    if (backend == NULL || extension_name == NULL || extension_name[0] == '\0')
+        return CDIN_BACKEND_INVALID_ARGUMENT;
+    if (!cdin_backend_is_owner(backend) || backend->state != CDIN_BACKEND_STATE_RUNNING)
+        return CDIN_BACKEND_INVALID_STATE;
+    return CDIN_BACKEND_UNSUPPORTED;
+}
+
+cdin_backend_status cdin_backend_extension_unload(cdin_backend *backend,
+                                                  const char *extension_name)
+{
+    if (backend == NULL || extension_name == NULL || extension_name[0] == '\0')
+        return CDIN_BACKEND_INVALID_ARGUMENT;
+    if (!cdin_backend_is_owner(backend) || backend->state != CDIN_BACKEND_STATE_RUNNING)
+        return CDIN_BACKEND_INVALID_STATE;
+    return CDIN_BACKEND_UNSUPPORTED;
+}
 #else
 #include "lua_host_internal.h"
 
@@ -256,5 +276,113 @@ void cdin_lua_host_destroy(cdin_lua_host *host)
     }
     cdin_lua_host_extension_resolver_destroy(host);
     free(host);
+}
+
+static cdin_backend_status extension_status_from_lua(lua_State *L)
+{
+    const char *code = NULL;
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "code");
+        code = lua_tostring(L, -1);
+        lua_pop(L, 1);
+    }
+    if (code == NULL) return CDIN_BACKEND_INTERNAL;
+    if (strcmp(code, "INVALID_ARGUMENT") == 0) return CDIN_BACKEND_INVALID_ARGUMENT;
+    if (strcmp(code, "INVALID_STATE") == 0) return CDIN_BACKEND_INVALID_STATE;
+    if (strcmp(code, "SHUTDOWN") == 0) return CDIN_BACKEND_SHUTDOWN;
+    if (strcmp(code, "UNSUPPORTED") == 0) return CDIN_BACKEND_UNSUPPORTED;
+    if (strcmp(code, "NOT_FOUND") == 0) return CDIN_BACKEND_NOT_FOUND;
+    if (strcmp(code, "PERMISSION_DENIED") == 0) return CDIN_BACKEND_PERMISSION_DENIED;
+    if (strcmp(code, "LIMIT_EXCEEDED") == 0) return CDIN_BACKEND_LIMIT_EXCEEDED;
+    if (strcmp(code, "NO_MEMORY") == 0) return CDIN_BACKEND_NO_MEMORY;
+    if (strcmp(code, "IO_ERROR") == 0) return CDIN_BACKEND_IO_ERROR;
+    return CDIN_BACKEND_INTERNAL;
+}
+
+static cdin_backend_status lua_runtime_extension_call(
+    cdin_lua_host *host, const char *method, const char *extension_name, int loading)
+{
+    lua_State *L;
+    int base;
+    cdin_backend_status status = CDIN_BACKEND_INTERNAL;
+    size_t name_length;
+    if (host == NULL || host->backend == NULL || host->state == NULL ||
+        host->runtime_ref == LUA_NOREF || !host->started ||
+        method == NULL || extension_name == NULL) return CDIN_BACKEND_INVALID_STATE;
+    if (!cdin_backend_is_owner(host->backend)) return CDIN_BACKEND_INVALID_STATE;
+    name_length = strlen(extension_name);
+    if (name_length == 0u || name_length > 128u) return CDIN_BACKEND_INVALID_ARGUMENT;
+
+    L = host->state;
+    base = lua_gettop(L);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, host->runtime_ref);
+    if (!lua_istable(L, -1)) {
+        lua_settop(L, base);
+        return CDIN_BACKEND_INVALID_STATE;
+    }
+    lua_getfield(L, -1, method);
+    if (!lua_isfunction(L, -1)) {
+        lua_settop(L, base);
+        return CDIN_BACKEND_UNSUPPORTED;
+    }
+    lua_pushvalue(L, -2); /* Runtime self */
+    lua_pushlstring(L, extension_name, name_length);
+    if (loading) {
+        lua_newtable(L); /* Empty extension config; application config can be layered above this API. */
+        lua_pushnil(L);   /* options */
+    }
+    if (lua_pcall(L, loading ? 4 : 2, 1, 0) != LUA_OK) {
+        status = extension_status_from_lua(L);
+        lua_settop(L, base);
+        return status;
+    }
+
+    if (loading) {
+        const char *returned_name;
+        const char *returned_state;
+        const char *source;
+        lua_getfield(L, -1, "name");
+        returned_name = lua_tostring(L, -1);
+        lua_pop(L, 1);
+        lua_getfield(L, -1, "state");
+        returned_state = lua_tostring(L, -1);
+        lua_pop(L, 1);
+        lua_getfield(L, -1, "source");
+        source = lua_tostring(L, -1);
+        lua_pop(L, 1);
+        if (returned_name != NULL && strcmp(returned_name, extension_name) == 0 &&
+            returned_state != NULL && strcmp(returned_state, "active") == 0 &&
+            source != NULL && strcmp(source, "resolver") == 0) {
+            status = CDIN_BACKEND_OK;
+        }
+    } else {
+        status = lua_toboolean(L, -1) ? CDIN_BACKEND_OK : CDIN_BACKEND_NOT_FOUND;
+    }
+    lua_settop(L, base);
+    return status;
+}
+
+cdin_backend_status cdin_backend_extension_load(cdin_backend *backend,
+                                                const char *extension_name)
+{
+    if (backend == NULL || extension_name == NULL || extension_name[0] == '\0')
+        return CDIN_BACKEND_INVALID_ARGUMENT;
+    if (!cdin_backend_is_owner(backend) || backend->state != CDIN_BACKEND_STATE_RUNNING ||
+        backend->runtime == NULL) return CDIN_BACKEND_INVALID_STATE;
+    if (backend->config.extension_source_root == NULL)
+        return CDIN_BACKEND_UNSUPPORTED;
+    return lua_runtime_extension_call(backend->runtime, "load_extension",
+                                      extension_name, 1);
+}
+
+cdin_backend_status cdin_backend_extension_unload(cdin_backend *backend,
+                                                  const char *extension_name)
+{
+    if (backend == NULL || extension_name == NULL || extension_name[0] == '\0')
+        return CDIN_BACKEND_INVALID_ARGUMENT;
+    if (!cdin_backend_is_owner(backend) || backend->state != CDIN_BACKEND_STATE_RUNNING ||
+        backend->runtime == NULL) return CDIN_BACKEND_INVALID_STATE;
+    return lua_runtime_extension_call(backend->runtime, "unload_extension",
+                                      extension_name, 0);
 }
 #endif
