@@ -31,7 +31,6 @@
 - Kernel-independent Protocol, Headless and Backend service tests pass in the supplied Linux build. The full Kernel + Lua 5.4 Backend target and the Runtime patch have not been built/applied in this environment.
 - No concrete UDS/Named Pipe transport or native macOS/Windows verification is included. This is a source/API and wire-contract version freeze, not a claim that the complete CDIN product is production-integrated.
 
-
 All notable changes to the Backend are recorded here. This project follows Semantic Versioning while the `0.x` API remains provisional.
 
 ## [0.1.0] - 2026-11-02
