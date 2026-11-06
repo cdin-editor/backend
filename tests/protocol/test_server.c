@@ -397,7 +397,9 @@ static void test_driver_role_notification_is_capability_gated(void)
                                           event.payload, event.payload_length) == CDIN_PROTOCOL_OK);
     assert(cdin_protocol_payload_get_uint(event.payload, event.payload_length,
                                            "epoch", &epoch) == CDIN_PROTOCOL_OK);
-    assert(epoch == event.sequence && epoch == 3u);
+    /* Sequence numbers are per connection: the promotion event is sequence 1,
+     * and this detached client's reacquisition event is sequence 2. */
+    assert(epoch == event.sequence && epoch == 2u);
     assert(cdin_protocol_payload_get_bool(event.payload, event.payload_length,
                                            "driver", &is_driver) == CDIN_PROTOCOL_OK);
     assert(is_driver == 1);
