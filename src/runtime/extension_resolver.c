@@ -35,6 +35,7 @@ typedef enum resolver_result {
     RESOLVER_IO
 } resolver_result;
 
+#ifndef _WIN32
 static int ascii_equal_fold(const char *left, const char *right)
 {
     while (*left != '\0' && *right != '\0') {
@@ -44,6 +45,7 @@ static int ascii_equal_fold(const char *left, const char *right)
     }
     return *left == '\0' && *right == '\0';
 }
+#endif
 
 static int valid_plugin_name(const char *value)
 {
