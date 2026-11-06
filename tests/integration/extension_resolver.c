@@ -147,7 +147,7 @@ static int test_resolver(void)
 {
     char temp[512] = { 0 };
     char root[640], demo[640], helpers[640], large[640], outside[640];
-    char path[768], link_path[768];
+    char path[768], link_path[768], secret_file[768];
     static const char init_source[] = "return { init = function() end }";
     static const char greeting_source[] = "return { value = 'hello' }\n";
     static const char small_source[] = "return true\n";
@@ -183,13 +183,14 @@ static int test_resolver(void)
         write_bytes(path, small_source, sizeof(small_source) - 1u) != 0 ||
         join_path(path, sizeof(path), demo, "binary.lua") != 0 ||
         write_bytes(path, binary_source, sizeof(binary_source)) != 0 ||
-        join_path(path, sizeof(path), outside, "secret.lua") != 0 ||
+        write_bytes(secret_file, small_source, sizeof(small_source) - 1u) != 0 ||
+        join_path(path, sizeof(path), large, "another.lua") != 0 ||
         write_bytes(path, small_source, sizeof(small_source) - 1u) != 0) {
         (void)fprintf(stderr, "could not create extension resolver test modules\n");
         goto cleanup_tree;
     }
 
-    if (setup_host(&backend, &host, root, 48u, 3u) != 0) {
+    if (setup_host(&backend, &host, root, 48u, 4u) != 0) {
         (void)fprintf(stderr, "could not initialize extension resolver\n");
         goto cleanup_tree;
     }
@@ -219,22 +220,24 @@ static int test_resolver(void)
         goto cleanup_host_and_tree;
     }
 
-    /* The fourth successful lookup is rejected by the per-host module-count
+    /* Four successful reads exhaust the configured per-host module-count
      * cap. Failed and missing reads do not consume a module slot. */
     if (resolve_module(L, resolver_ref, "demo", "large.small",
                        (const uint8_t *)small_source, sizeof(small_source) - 1u,
-                       "extension://demo/large.small", "LIMIT_EXCEEDED") != RESOLVER_CALL_ERROR) {
+                       "extension://demo/large.small", NULL) != RESOLVER_CALL_OK ||
+        resolve_module(L, resolver_ref, "demo", "large.another",
+                       (const uint8_t *)small_source, sizeof(small_source) - 1u,
+                       "extension://demo/large.another", "LIMIT_EXCEEDED") != RESOLVER_CALL_ERROR) {
         goto cleanup_host_and_tree;
     }
 
     if (join_path(path, sizeof(path), demo, "linked.lua") != 0) goto cleanup_host_and_tree;
 #ifdef _WIN32
-    if (CreateSymbolicLinkA(path, outside, 0u) ||
-        CreateSymbolicLinkA(path, outside, 0x2u)) {
+    if (CreateSymbolicLinkA(path, secret_file, 0x2u)) {
         symlink_created = 1;
     }
 #else
-    if (symlink(outside, path) == 0) symlink_created = 1;
+    if (symlink(secret_file, path) == 0) symlink_created = 1;
 #endif
     if (symlink_created &&
         resolve_module(L, resolver_ref, "demo", "linked",
@@ -242,9 +245,9 @@ static int test_resolver(void)
         goto cleanup_host_and_tree;
     }
 
-    /* POSIX can represent case-folding collisions. Windows commonly rejects
-     * the second create on a default case-insensitive directory, so this
-     * additional assertion runs only when both spellings coexist. */
+#ifndef _WIN32
+    /* POSIX can represent case-folding collisions. Reject both spellings
+     * rather than choosing one based on directory enumeration order. */
     {
         char upper_path[768], lower_path[768];
         if (join_path(upper_path, sizeof(upper_path), demo, "Case.lua") == 0 &&
@@ -258,6 +261,7 @@ static int test_resolver(void)
             }
         }
     }
+#endif
     result = 0;
 
     cleanup_host_and_tree:
@@ -269,8 +273,9 @@ static int test_resolver(void)
     (void)join_path(path, sizeof(path), helpers, "greeting.lua"); (void)remove_file(path);
     (void)join_path(path, sizeof(path), large, "payload.lua"); (void)remove_file(path);
     (void)join_path(path, sizeof(path), large, "small.lua"); (void)remove_file(path);
+    (void)join_path(path, sizeof(path), large, "another.lua"); (void)remove_file(path);
     (void)join_path(path, sizeof(path), demo, "binary.lua"); (void)remove_file(path);
-    (void)join_path(path, sizeof(path), outside, "secret.lua"); (void)remove_file(path);
+    (void)remove_file(secret_file);
     (void)join_path(link_path, sizeof(link_path), demo, "linked.lua");
     (void)join_path(path, sizeof(path), demo, "Case.lua");
     (void)remove_file(path);
