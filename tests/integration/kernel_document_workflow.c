@@ -71,6 +71,25 @@ int main(void)
     CHECK(cdin_kernel_host_document_create(host, original, sizeof(original) - 1u,
                                            &document, &info) == CDIN_BACKEND_OK);
     CHECK(info.version == 0u && info.length == sizeof(original) - 1u);
+    {
+        cdin_host_line_position position;
+        CHECK(cdin_kernel_host_document_line_from_offset(
+            host, document, 12u, 0u, &position) == CDIN_BACKEND_OK);
+        CHECK(position.version == 0u && position.line == 1u && position.column == 0u);
+        CHECK(cdin_kernel_host_document_line_from_offset(
+            host, document, 11u, 0u, &position) == CDIN_BACKEND_OK);
+        CHECK(position.line == 0u && position.column == 11u);
+        CHECK(cdin_kernel_host_document_line_from_offset(
+            host, document, sizeof(original) - 1u, 0u, &position) == CDIN_BACKEND_OK);
+        CHECK(position.line == 2u && position.column == 0u);
+        CHECK(cdin_kernel_host_document_line_from_offset(
+            host, document, sizeof(original), 0u, &position) == CDIN_BACKEND_OUT_OF_RANGE);
+        CHECK(position.details.requested == sizeof(original));
+        CHECK(position.details.length == sizeof(original) - 1u);
+        CHECK(cdin_kernel_host_document_line_from_offset(
+            host, document, 0u, 9u, &position) == CDIN_BACKEND_STALE_VERSION);
+        CHECK(position.details.expected == 9u && position.details.current == 0u);
+    }
     CHECK(cdin_kernel_host_document_is_clean(host, document, &is_clean) == CDIN_BACKEND_OK);
     CHECK(is_clean == 1);
 
