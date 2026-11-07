@@ -133,6 +133,7 @@ int lua_doc_create(lua_State *L);
 int lua_doc_close(lua_State *L);
 int lua_doc_read(lua_State *L);
 int lua_doc_read_lines(lua_State *L);
+int lua_doc_line_from_offset(lua_State *L);
 int lua_doc_replace(lua_State *L);
 int lua_doc_undo(lua_State *L);
 int lua_doc_redo(lua_State *L);
