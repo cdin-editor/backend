@@ -164,6 +164,36 @@ int lua_doc_read_lines(lua_State *L)
     return 1;
 }
 
+int lua_doc_line_from_offset(lua_State *L)
+{
+    cdin_lua_host *host = (cdin_lua_host *)lua_touserdata(L, lua_upvalueindex(1));
+    cdin_lua_handle *handle = check_handle(L, 2, CDIN_LUA_DOCUMENT);
+    cdin_host_line_position position;
+    uint64_t offset;
+    uint64_t expected_version;
+    cdin_backend_status status;
+
+    luaL_checktype(L, 3, LUA_TTABLE);
+    offset = field_u64(L, 3, "offset", UINT64_MAX);
+    expected_version = field_u64(L, 3, "expected_version", UINT64_MAX);
+    if (offset == UINT64_MAX || expected_version == UINT64_MAX)
+        return raise_argument(L, "documents.line_from_offset");
+
+    status = cdin_kernel_host_document_line_from_offset(
+        host->backend->kernel, handle->value, offset, expected_version, &position);
+    if (status != CDIN_BACKEND_OK) {
+        cdin_lua_error_details details;
+        lua_error_details_from_host(&details, &position.details, status);
+        return raise_status(L, status, "documents.line_from_offset", &details);
+    }
+
+    lua_createtable(L, 0, 3);
+    lua_pushinteger(L, (lua_Integer)position.version); lua_setfield(L, -2, "version");
+    lua_pushinteger(L, (lua_Integer)position.line); lua_setfield(L, -2, "line");
+    lua_pushinteger(L, (lua_Integer)position.column); lua_setfield(L, -2, "column");
+    return 1;
+}
+
 int lua_doc_replace(lua_State *L)
 {
     cdin_lua_host *host = (cdin_lua_host *)lua_touserdata(L, lua_upvalueindex(1));
