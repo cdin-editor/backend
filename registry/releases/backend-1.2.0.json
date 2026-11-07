@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0.0",
+  "component_id": "backend",
+  "variant": "default",
+  "version": "1.2.0",
+  "status": "active",
+  "source_units": [
+    {
+      "source_unit_id": "backend-source",
+      "repository_uri": "https://github.com/cdin-editor/backend",
+      "revision": "c0a88090460929796bd7cd731966f04115256910"
+    }
+  ],
+  "dependencies": [
+    {
+      "component_id": "kernel",
+      "version_constraint": ">=1.2.1 <2.0.0"
+    },
+    {
+      "component_id": "runtime",
+      "version_constraint": ">=1.0.0-rc.1 <2.0.0"
+    }
+  ],
+  "contracts": {
+    "provides": [
+      {
+        "contract_id": "org.cdin.runtime-host-api",
+        "version": "1.0.0"
+      },
+      {
+        "contract_id": "org.cdin.frontend-protocol",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "contract_id": "org.cdin.kernel-abi",
+        "version_constraint": ">=1.1.0 <2.0.0"
+      }
+    ]
+  }
+}
