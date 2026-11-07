@@ -50,6 +50,12 @@ typedef struct cdin_host_lines_result {
     uint64_t total_lines;
     cdin_host_error_details details;
 } cdin_host_lines_result;
+typedef struct cdin_host_line_position {
+    uint64_t version;
+    uint64_t line;
+    uint64_t column;
+    cdin_host_error_details details;
+} cdin_host_line_position;
 typedef struct cdin_host_edit_result {
     uint64_t version, accepted_sequence, start, removed, inserted, new_length;
     uint32_t edit_count;
@@ -105,6 +111,10 @@ cdin_backend_status cdin_kernel_host_document_read_lines(cdin_kernel_host *host,
                                                           uint64_t expected_version,
                                                           size_t max_bytes,
                                                           cdin_host_lines_result *out_result);
+/* Resolve a byte offset against one immutable document snapshot. */
+cdin_backend_status cdin_kernel_host_document_line_from_offset(
+    cdin_kernel_host *host, cdin_host_handle handle, uint64_t offset,
+    uint64_t expected_version, cdin_host_line_position *out_position);
 void cdin_kernel_host_lines_result_free(cdin_host_lines_result *result);
 cdin_backend_status cdin_kernel_host_document_replace(cdin_kernel_host *host, cdin_host_handle handle,
                                                        uint64_t expected_version,
