@@ -145,6 +145,63 @@ void cdin_kernel_host_read_result_free(cdin_host_read_result *result)
     memset(result, 0, sizeof(*result));
 }
 
+cdin_backend_status cdin_kernel_host_document_line_from_offset(
+    cdin_kernel_host *host, cdin_host_handle handle, uint64_t offset,
+    uint64_t expected_version, cdin_host_line_position *out_position)
+{
+    cdin_doc_slot *slot;
+    cdin_snapshot snapshot = CDIN_INVALID_SNAPSHOT;
+    cdin_version version = 0u;
+    uint64_t document_length = 0u;
+    cdin_status kernel_status;
+    cdin_backend_status status;
+    int acquired = 0;
+
+    if (out_position == NULL) return CDIN_BACKEND_INVALID_ARGUMENT;
+    memset(out_position, 0, sizeof(*out_position));
+    status = cdin_kernel_document_get(host, handle, &slot);
+    if (status != CDIN_BACKEND_OK) return status;
+
+    /* Use the same immutable-source discipline as read_lines(): the line
+     * index and returned version must describe one document state. */
+    kernel_status = cdin_snapshot_acquire(host->kernel, slot->raw, &version, &snapshot);
+    if (kernel_status != CDIN_OK) return cdin_kernel_map_status(kernel_status);
+    acquired = 1;
+    out_position->version = (uint64_t)version;
+
+    if ((uint64_t)version != expected_version) {
+        out_position->details.expected = expected_version;
+        out_position->details.current = (uint64_t)version;
+        status = CDIN_BACKEND_STALE_VERSION;
+        goto cleanup;
+    }
+
+    kernel_status = cdin_text_len(host->kernel, cdin_src_snap(snapshot), &document_length);
+    if (kernel_status != CDIN_OK) {
+        status = cdin_kernel_map_status(kernel_status);
+        goto cleanup;
+    }
+    if (offset > document_length) {
+        out_position->details.requested = offset;
+        out_position->details.length = document_length;
+        status = CDIN_BACKEND_OUT_OF_RANGE;
+        goto cleanup;
+    }
+
+    kernel_status = cdin_text_line_from_offset(
+        host->kernel, cdin_src_snap(snapshot), offset,
+        &out_position->line, &out_position->column);
+    status = cdin_kernel_map_status(kernel_status);
+
+cleanup:
+    if (acquired) {
+        cdin_status release_status = cdin_snapshot_release(host->kernel, snapshot);
+        if (status == CDIN_BACKEND_OK && release_status != CDIN_OK)
+            status = cdin_kernel_map_status(release_status);
+    }
+    return status;
+}
+
 void cdin_kernel_host_lines_result_free(cdin_host_lines_result *result)
 {
     size_t index;
