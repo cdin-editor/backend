@@ -1,10 +1,10 @@
-# Runtime Host API 1.0.0
+# Runtime Host API 1.1.0
 
 Runtime does not call the Kernel directly. It calls a table named `host`, which
 the Backend creates. This page documents the Host services implemented by this
 Backend source snapshot.
 
-Backend reports Host API `1.0.0`, Kernel ABI `1.1.x` and Frontend Protocol
+Backend reports Host API `1.1.0`, Kernel ABI `1.1.x` and Frontend Protocol
 `1.0.0`. Host API `1.x` is stable and uses same-major, minimum-minor compatibility;
 additive minor versions are accepted. Frontend Protocol `1.x` is a separate
 stable contract and uses its own same-major, minimum-minor compatibility rule. The paired Runtime `1.0.0-rc.1` source in this delivery advertises
@@ -12,7 +12,7 @@ Protocol `1.0.0`; never disable or weaken either version guard to hide a mismatc
 
 ## 1. Host descriptor
 
-Host API `1.0.0` freezes the Lua method shapes, ownership/lifetime rules,
+Host API `1.1.0` adds an optional document line-lookup method without changing existing Host API 1.0.0 behavior. Host API `1.0.0` freezes the Lua method shapes, ownership/lifetime rules,
 thread-affinity requirements, required capabilities and stable error identities
 documented here and in the paired Runtime contract. Compatible `1.x` minor
 versions may add optional methods, fields and capabilities only. Existing
@@ -26,6 +26,7 @@ notification, snapshot, transaction, batch, search, UI and logging features,
 Host API `1.0.0` reports:
 
 - `document_lines = true`: bounded version-pinned byte line-window reads;
+- `document_line_lookup = true`: version-pinned byte-offset to logical-line lookup via the Kernel line index; optional for older 1.x Hosts.
 - `frontend_events = true|false`: true only when the in-process Protocol server
   is enabled and the Lua event dispatcher is compiled in.
 
@@ -55,6 +56,7 @@ methods are:
 | `create(initial_bytes, metadata?)` / `close(handle)` | Create or close a Kernel document. |
 | `read(handle, request)` | Read a bounded byte range; `start=0,length=0,expected_version=nil` refreshes latest metadata only. |
 | `read_lines(handle, request)` | Read complete logical line byte strings from one immutable Kernel Snapshot. |
+| `line_from_offset(handle, { offset, expected_version })` | Resolve a document byte offset to a zero-based logical line/column against one immutable snapshot; optional in Host API 1.1.0. |
 | `replace(handle, request)` / `replace_batch(handle, request)` | Apply one or several half-open byte-range edits. |
 | `undo(handle, request)` / `redo(handle, request)` | Move through Kernel-owned history. |
 | `acquire_snapshot(handle)` / `read_snapshot(handle, request)` / `release_snapshot(handle)` | Explicit version-pinned byte reads. |
@@ -63,6 +65,31 @@ methods are:
 | `mark_clean()` / `mark_clean_if_version()` / `is_clean()` | Maintain saved-state metadata. |
 | `subscribe()` / `unsubscribe()` / `drain()` | Consume bounded Kernel document notifications. |
 | `search(handle, request)` | Literal or byte search; regex returns `UNSUPPORTED`. |
+
+### `line_from_offset()` contract
+
+```lua
+host.documents:line_from_offset(handle, {
+  offset = 8192,           -- zero-based byte offset; EOF is valid
+  expected_version = 42,  -- mandatory
+})
+-- -> { version = 42, line = 120, column = 5 }
+```
+
+The Backend acquires an immutable Kernel Snapshot, checks the mandatory
+`expected_version`, and calls the public
+`cdin_text_line_from_offset()` API on that Snapshot. It releases the Snapshot
+before returning. The returned `version`, `line` and `column` therefore
+describe one exact document state. A stale version returns `STALE_VERSION`
+with expected/current details; an offset past EOF returns `OUT_OF_RANGE`
+with requested/document-length details. The Kernel owns LF, CRLF and lone-CR
+line semantics; Backend does not rescan or reinterpret document bytes.
+
+This method is optional under Host API 1.x. A Host advertises
+`features.document_line_lookup = true` only when it implements the method.
+Runtime 1.0 remains compatible with Host 1.1 and can ignore the additional
+feature/method. Frontend Protocol is unchanged; this does not itself publish a
+line anchor or alter `scroll_anchor`.
 
 ### `read_lines()` contract
 
