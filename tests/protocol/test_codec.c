@@ -397,6 +397,7 @@ static void test_frame_bounds(void)
 
 static void test_pane_splitter_protocol(void)
 {
+    /* Spec vector: horizontal-split-commit; the request fixture is the same wire shape. */
     static const uint8_t resize_payload[] = {
         0xa4u,
         0x68u, 'r','a','t','i','o','_','b','p', 0x19u, 0x13u, 0x88u,
