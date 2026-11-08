@@ -409,10 +409,107 @@ static void test_driver_role_notification_is_capability_gated(void)
     cdin_protocol_server_destroy(server);
 }
 
+static void test_pane_splitter_capability_driver_and_request_ids(void)
+{
+    static const uint8_t request_one[] = {
+        0xa4u,
+        0x68u, 'r','a','t','i','o','_','b','p', 0x19u, 0x13u, 0x88u,
+        0x68u, 's','p','l','i','t','_','i','d', 0x67u, 's','p','l','i','t','-','1',
+        0x6au, 'r','e','q','u','e','s','t','_','i','d', 0x01u,
+        0x6fu, 'l','a','y','o','u','t','_','r','e','v','i','s','i','o','n', 0x07u
+    };
+    static const uint8_t request_two[] = {
+        0xa4u,
+        0x68u, 'r','a','t','i','o','_','b','p', 0x19u, 0x13u, 0x88u,
+        0x68u, 's','p','l','i','t','_','i','d', 0x67u, 's','p','l','i','t','-','1',
+        0x6au, 'r','e','q','u','e','s','t','_','i','d', 0x02u,
+        0x6fu, 'l','a','y','o','u','t','_','r','e','v','i','s','i','o','n', 0x08u
+    };
+    cdin_protocol_server *server = NULL;
+    cdin_protocol_client *driver = NULL, *observer = NULL, *legacy = NULL;
+    cdin_protocol_hello hello;
+    cdin_protocol_hello_ack ack;
+    cdin_protocol_message_view request;
+    uint64_t request_id = 0u;
+
+    assert(cdin_protocol_server_create(3u, 8u, 4u, 0x11223344u,
+                                       CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE,
+                                       1024u, NULL, NULL, &server) == CDIN_BACKEND_OK);
+    memset(&hello, 0, sizeof(hello));
+    hello.major = CDIN_PROTOCOL_VERSION_MAJOR;
+    hello.minor = CDIN_PROTOCOL_VERSION_MINOR;
+    hello.frontend_name = "pane-driver";
+    hello.capabilities = CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE;
+    assert(cdin_protocol_client_open(server, &driver) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_hello_accept(driver, &hello, &ack) == CDIN_BACKEND_OK);
+    assert(ack.driver == 1);
+    assert(ack.accepted_capabilities == CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE);
+    assert(cdin_protocol_client_has_capability(driver, CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE));
+    assert(cdin_protocol_attach(driver) == CDIN_BACKEND_OK);
+
+    hello.frontend_name = "pane-observer";
+    assert(cdin_protocol_client_open(server, &observer) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_hello_accept(observer, &hello, &ack) == CDIN_BACKEND_OK);
+    assert(ack.driver == 0 && ack.accepted_capabilities == CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE);
+    assert(cdin_protocol_client_has_capability(observer, CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE));
+    assert(cdin_protocol_attach(observer) == CDIN_BACKEND_OK);
+
+    hello.frontend_name = "legacy-observer";
+    hello.capabilities = 0u;
+    assert(cdin_protocol_client_open(server, &legacy) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_hello_accept(legacy, &hello, &ack) == CDIN_BACKEND_OK);
+    assert(ack.driver == 0 && ack.accepted_capabilities == 0u);
+    assert(!cdin_protocol_client_has_capability(legacy, CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE));
+    assert(cdin_protocol_attach(legacy) == CDIN_BACKEND_OK);
+
+    memset(&request, 0, sizeof(request));
+    request.major = CDIN_PROTOCOL_VERSION_MAJOR;
+    request.minor = CDIN_PROTOCOL_VERSION_MINOR;
+    request.type = CDIN_PROTOCOL_PANE_SPLITTER_RESIZE;
+    request.name_space = "pane";
+    request.payload = request_one;
+    request.payload_length = sizeof(request_one);
+    request.sequence = 1u;
+    assert(cdin_protocol_payload_get_uint(request.payload, request.payload_length,
+                                          "request_id", &request_id) == CDIN_PROTOCOL_OK);
+    assert(request_id == 1u);
+    assert(cdin_protocol_receive(driver, &request) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_pending_events(driver) == 1u);
+
+    /* Retrying the same immutable request ID is allowed for the Host's
+     * no-duplicate result/snapshot retry path. */
+    request.sequence = 2u;
+    assert(cdin_protocol_receive(driver, &request) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_pending_events(driver) == 2u);
+
+    request.payload = request_two;
+    request.payload_length = sizeof(request_two);
+    request.sequence = 3u;
+    assert(cdin_protocol_receive(driver, &request) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_pending_events(driver) == 3u);
+
+    request.payload = request_one;
+    request.payload_length = sizeof(request_one);
+    request.sequence = 4u;
+    assert(cdin_protocol_receive(driver, &request) == CDIN_BACKEND_INVALID_ARGUMENT);
+
+    request.sequence = 1u;
+    assert(cdin_protocol_receive(observer, &request) == CDIN_BACKEND_PERMISSION_DENIED);
+    assert(cdin_protocol_pending_events(observer) == 0u);
+    assert(cdin_protocol_receive(legacy, &request) == CDIN_BACKEND_UNSUPPORTED);
+    assert(cdin_protocol_pending_events(legacy) == 0u);
+
+    assert(cdin_protocol_client_close(driver) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_client_close(observer) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_client_close(legacy) == CDIN_BACKEND_OK);
+    cdin_protocol_server_destroy(server);
+}
+
 int main(void)
 {
     test_hello_ack_assigns_driver_role();
     test_driver_role_notification_is_capability_gated();
+    test_pane_splitter_capability_driver_and_request_ids();
     test_queue_flush_ack_and_inbound();
     test_flush_slot_is_reserved();
     test_atomic_ui_batch();
