@@ -42,14 +42,22 @@ Kernel header.
 
 ## Current status
 
-This repository contains Backend library version 1.2.0, the shared Frontend Protocol 1.0.0
-codec/server, reusable OS/job services, Kernel adapter, PUC Lua 5.4 bridge,
-Runtime UI-model projection, owner-thread inbound event dispatcher,
-version-pinned line-read service, Headless Frontend harness and integration
-workflows. It is **not yet a complete runnable CDIN editor**: the paired Runtime 1.0.0-rc.1
-source now advertises the required Frontend Protocol 1.0.0, but live Lua +
-Kernel integration, concrete Unix Socket/Windows Named Pipe transport, and the
-complete native OS matrix remain release gates.
+This repository currently builds Backend library/package version `1.2.0`.
+That source identity is active in the CDIN Registry Catalog and is selected by
+the TUI and GUI-SDL Product Definitions. It is an **integration package
+candidate**, not yet a formal Git-tagged `v1.2.0` source release: no `v1.2.0`
+tag or GitHub Release has been published. The release workflow remains
+tag-driven and will publish an archive only when the matching version tag is
+created.
+
+The package provides the shared Frontend Protocol 1.0.0 codec/server, reusable
+OS/job services, Kernel adapter, PUC Lua 5.4 bridge, Runtime UI-model
+projection, owner-thread inbound event dispatcher, version-pinned line-read
+service, Headless Frontend harness and integration workflows. Backend is
+**not yet a complete runnable CDIN editor** on its own; the paired Runtime
+1.0.0-rc.1, live Lua + Kernel integration and concrete Unix Socket/Windows
+Named Pipe transport remain product/release boundaries tracked by the
+composition root and Spec.
 
 The [CDIN specification](https://github.com/cdin-editor/spec) is the source of
 truth for cross-project contracts. This README describes the current state of

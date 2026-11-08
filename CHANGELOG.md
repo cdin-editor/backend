@@ -1,5 +1,13 @@
 ## Unreleased
 
+> **Current package identity:** Backend `1.2.0` is active in the Registry
+> Catalog for CDIN integration, but it has not been published as a formal
+> `v1.2.0` tag or GitHub Release. The tag-triggered release workflow remains
+> the publication path; until that tag is deliberately created, these changes
+> remain Unreleased. The `1.1.0` version-bump entry below records an
+> intermediate change during this development line; the current CMake,
+> Registry metadata and CDIN Manifest version is `1.2.0`.
+
 - Correct the Protocol server regression test to expect the reattach role notification at the next per-connection frame sequence after the earlier promotion event.
 - Add optional bounded `host.fs:read_file()` for exact binary file bytes with structured file-read errors.
 - Add the disabled-by-default, Backend-owned Runtime extension resolver with canonical root confinement, no-follow file traversal, reparse/symlink denial, exact-byte source reads, owner-thread enforcement and per-module/module-count/aggregate limits.
