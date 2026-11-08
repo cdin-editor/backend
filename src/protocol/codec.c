@@ -314,6 +314,13 @@ static const field_rule schema_set_position[] = {
 static const field_rule schema_command[] = {
     RULE("name", FIELD_TEXT), RULE("arguments", FIELD_MAP)
 };
+static const field_rule schema_pane_splitter_resize[] = {
+    RULE("ratio_bp", FIELD_UINT), RULE("split_id", FIELD_TEXT),
+    RULE("request_id", FIELD_UINT), RULE("layout_revision", FIELD_UINT)
+};
+static const field_rule schema_pane_splitter_result[] = {
+    RULE("status", FIELD_TEXT), RULE("request_id", FIELD_UINT), RULE("layout_revision", FIELD_UINT)
+};
 static const field_rule schema_response_clipboard[] = {
     RULE("request_id", FIELD_UINT), RULE("bytes", FIELD_BYTES)
 };
@@ -790,6 +797,7 @@ static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
     uint64_t maximum_major;
     uint64_t maximum_minor;
     uint64_t role_epoch;
+    uint64_t request_id;
     switch (type) {
     case CDIN_PROTOCOL_HELLO:
         if (!cbor_field_text_nonempty(payload, payload_length, "frontend_name", 96u) ||
@@ -804,6 +812,24 @@ static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
         if (!cbor_field_uint(payload, payload_length, "epoch", &role_epoch) ||
             role_epoch == 0u) return 0;
         break;
+    case CDIN_PROTOCOL_PANE_SPLITTER_RESIZE:
+        if (!cbor_field_uint(payload, payload_length, "request_id", &request_id) ||
+            request_id == 0u ||
+            !cbor_field_text_nonempty(payload, payload_length, "split_id", 128u) ||
+            !cbor_field_uint(payload, payload_length, "layout_revision", &role_epoch) ||
+            !cbor_field_uint(payload, payload_length, "ratio_bp", &role_epoch)) return 0;
+        break;
+    case CDIN_PROTOCOL_PANE_SPLITTER_RESULT: {
+        static const char *const result_statuses[] = {
+            "applied", "stale_revision", "not_found", "invalid_ratio", "not_driver", "unsupported", "busy"
+        };
+        if (!cbor_field_uint(payload, payload_length, "request_id", &request_id) ||
+            request_id == 0u ||
+            !cbor_field_uint(payload, payload_length, "layout_revision", &role_epoch) ||
+            !cbor_field_text_in(payload, payload_length, "status", result_statuses,
+                                sizeof(result_statuses) / sizeof(result_statuses[0]))) return 0;
+        break;
+    }
     case CDIN_PROTOCOL_ATTACH:
         if (!cbor_field_text_in(payload, payload_length, "units", units,
                                 sizeof(units) / sizeof(units[0]))) return 0;
@@ -942,6 +968,8 @@ cdin_protocol_status cdin_protocol_validate_payload(cdin_protocol_message_type t
     case CDIN_PROTOCOL_VIEW_REQUEST_LINES: valid = VALIDATE(schema_request_lines); break;
     case CDIN_PROTOCOL_VIEW_SET_POSITION: valid = VALIDATE(schema_set_position); break;
     case CDIN_PROTOCOL_REQUEST_COMMAND: valid = VALIDATE(schema_command); break;
+    case CDIN_PROTOCOL_PANE_SPLITTER_RESIZE: valid = VALIDATE(schema_pane_splitter_resize); break;
+    case CDIN_PROTOCOL_PANE_SPLITTER_RESULT: valid = VALIDATE(schema_pane_splitter_result); break;
     case CDIN_PROTOCOL_RESPONSE_CLIPBOARD: valid = VALIDATE(schema_response_clipboard); break;
     case CDIN_PROTOCOL_RESPONSE_DIALOG: valid = VALIDATE(schema_response_dialog); break;
     case CDIN_PROTOCOL_ACK: valid = VALIDATE(schema_ack); break;
@@ -1127,6 +1155,8 @@ const char *cdin_protocol_message_name(cdin_protocol_message_type type)
     case CDIN_PROTOCOL_HELLO_ACK: return "hello_ack";
     case CDIN_PROTOCOL_DETACH_ACK: return "detach_ack";
     case CDIN_PROTOCOL_DRIVER_ROLE_CHANGED: return "driver.role_changed";
+    case CDIN_PROTOCOL_PANE_SPLITTER_RESULT: return "pane.splitter.result";
+    case CDIN_PROTOCOL_PANE_SPLITTER_RESIZE: return "pane.splitter.resize";
     case CDIN_PROTOCOL_HELLO: return "hello";
     case CDIN_PROTOCOL_ATTACH: return "attach";
     case CDIN_PROTOCOL_DETACH: return "detach";
@@ -1148,7 +1178,7 @@ const char *cdin_protocol_message_name(cdin_protocol_message_type type)
 
 int cdin_protocol_message_is_inbound(cdin_protocol_message_type type)
 {
-    return type >= CDIN_PROTOCOL_HELLO && type <= CDIN_PROTOCOL_ACK;
+    return type >= CDIN_PROTOCOL_HELLO && type <= CDIN_PROTOCOL_PANE_SPLITTER_RESIZE;
 }
 
 int cdin_protocol_message_requires_driver(cdin_protocol_message_type type)
@@ -1162,6 +1192,7 @@ int cdin_protocol_message_requires_driver(cdin_protocol_message_type type)
     case CDIN_PROTOCOL_FOCUS:
     case CDIN_PROTOCOL_VIEW_SET_POSITION:
     case CDIN_PROTOCOL_REQUEST_COMMAND:
+    case CDIN_PROTOCOL_PANE_SPLITTER_RESIZE:
         return 1;
     default:
         return 0;
@@ -1268,6 +1299,8 @@ cdin_protocol_status cdin_protocol_encode_frame(const cdin_protocol_message_view
                                                  size_t max_frame_bytes)
 {
     const char *type_name;
+    const char *name_space;
+    size_t namespace_length;
     size_t body_size;
     size_t total_size;
     size_t offset;
@@ -1276,7 +1309,10 @@ cdin_protocol_status cdin_protocol_encode_frame(const cdin_protocol_message_view
         message->name_space == NULL) return CDIN_PROTOCOL_INVALID_ARGUMENT;
     *out_length = 0u;
     type_name = cdin_protocol_message_name(message->type);
-    if (type_name == NULL || strcmp(message->name_space, "core") != 0) return CDIN_PROTOCOL_UNSUPPORTED;
+    name_space = (message->type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE ||
+                  message->type == CDIN_PROTOCOL_PANE_SPLITTER_RESULT) ? "pane" : "core";
+    namespace_length = strlen(name_space);
+    if (type_name == NULL || strcmp(message->name_space, name_space) != 0) return CDIN_PROTOCOL_UNSUPPORTED;
     if (message->major != CDIN_PROTOCOL_VERSION_MAJOR || message->minor != CDIN_PROTOCOL_VERSION_MINOR) {
         return CDIN_PROTOCOL_VERSION_MISMATCH;
     }
@@ -1286,7 +1322,7 @@ cdin_protocol_status cdin_protocol_encode_frame(const cdin_protocol_message_view
     body_size = 1u; /* Fixed five-field envelope map. */
     body_size += 1u + cbor_uint_size(message->major) + cbor_uint_size(message->minor); /* version array */
     body_size += 1u + 1u; /* key "v" */
-    body_size += 1u + 2u + 1u + 4u; /* key "ns" and value "core" */
+    body_size += 1u + 2u + 1u + namespace_length; /* key "ns" and namespace text */
     body_size += 1u + 3u + cbor_uint_size(message->sequence); /* key "seq" and value */
     body_size += 1u + 4u + 1u + strlen(type_name); /* key "type" and text value */
     body_size += 1u + 7u + message->payload_length; /* key "payload" and encoded map */
@@ -1303,7 +1339,7 @@ cdin_protocol_status cdin_protocol_encode_frame(const cdin_protocol_message_view
     offset += cbor_write_head(body + offset, CBOR_MAJOR_UINT, message->major);
     offset += cbor_write_head(body + offset, CBOR_MAJOR_UINT, message->minor);
     offset += cbor_write_text(body + offset, "ns");
-    offset += cbor_write_text(body + offset, "core");
+    offset += cbor_write_text(body + offset, name_space);
     offset += cbor_write_text(body + offset, "seq");
     offset += cbor_write_head(body + offset, CBOR_MAJOR_UINT, message->sequence);
     offset += cbor_write_text(body + offset, "type");
@@ -1323,7 +1359,7 @@ cdin_protocol_status cdin_protocol_encode_frame(const cdin_protocol_message_view
 static int type_from_name(const uint8_t *data, size_t length, cdin_protocol_message_type *out_type)
 {
     cdin_protocol_message_type type;
-    for (type = CDIN_PROTOCOL_UI_OPTIONS; type <= CDIN_PROTOCOL_ACK; type = (cdin_protocol_message_type)((int)type + 1)) {
+    for (type = CDIN_PROTOCOL_UI_OPTIONS; type <= CDIN_PROTOCOL_PANE_SPLITTER_RESIZE; type = (cdin_protocol_message_type)((int)type + 1)) {
         const char *name = cdin_protocol_message_name(type);
         if (name != NULL && cbor_read_text_equals(data, length, name, NULL)) {
             *out_type = type;
@@ -1416,14 +1452,19 @@ cdin_protocol_status cdin_protocol_decode_frame(const uint8_t *frame,
     if (version_major != CDIN_PROTOCOL_VERSION_MAJOR || version_minor != CDIN_PROTOCOL_VERSION_MINOR) {
         return CDIN_PROTOCOL_VERSION_MISMATCH;
     }
-    if (!cbor_read_text_equals(body + namespace_item.start, namespace_item.end - namespace_item.start, "core", NULL)) {
-        return CDIN_PROTOCOL_UNSUPPORTED;
-    }
     if (!cbor_read_uint_item(body + sequence_item.start, sequence_item.end - sequence_item.start, &sequence)) {
         return CDIN_PROTOCOL_INVALID_FRAME;
     }
     if (!type_from_name(body + type_item.start, type_item.end - type_item.start, &type)) {
         return CDIN_PROTOCOL_UNSUPPORTED;
+    }
+    {
+        const char *expected_namespace =
+            (type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE || type == CDIN_PROTOCOL_PANE_SPLITTER_RESULT)
+                ? "pane" : "core";
+        if (!cbor_read_text_equals(body + namespace_item.start,
+                                   namespace_item.end - namespace_item.start,
+                                   expected_namespace, NULL)) return CDIN_PROTOCOL_UNSUPPORTED;
     }
     /* The version array is already bounded; this value keeps compiler diagnostics local. */
     version_length = (uint64_t)(version_item.end - version_item.start);
@@ -1438,7 +1479,7 @@ cdin_protocol_status cdin_protocol_decode_frame(const uint8_t *frame,
         out_message->minor = version_minor;
         out_message->sequence = sequence;
         out_message->type = type;
-        out_message->name_space = "core";
+        out_message->name_space = (type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE || type == CDIN_PROTOCOL_PANE_SPLITTER_RESULT) ? "pane" : "core";
         out_message->payload = payload;
         out_message->payload_length = payload_length;
     }
