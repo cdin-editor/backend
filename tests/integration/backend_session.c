@@ -181,6 +181,8 @@ static int test_running_session_and_protocol(log_capture *logs)
     if (cdin_backend_frontend_hello(driver, &hello, &ack) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\n", __LINE__); goto fail; } while (0);
     if (ack.session_id == 0u || ack.client_id == 0u) do { (void)fprintf(stderr, "backend_session test failure at line %d\n", __LINE__); goto fail; } while (0);
     if ((ack.accepted_capabilities & CDIN_BACKEND_CAP_DRIVER_ROLE_EVENTS) == 0u) do { (void)fprintf(stderr, "backend_session test failure at line %d\n", __LINE__); goto fail; } while (0);
+    /* The optional splitter extension is not advertised without a live Runtime. */
+    if ((ack.accepted_capabilities & CDIN_BACKEND_CAP_PANE_SPLITTER_RESIZE) != 0u) do { (void)fprintf(stderr, "backend_session test failure at line %d\\n", __LINE__); goto fail; } while (0);
     if (cdin_backend_frontend_attach(driver) != CDIN_BACKEND_OK) do { (void)fprintf(stderr, "backend_session test failure at line %d\n", __LINE__); goto fail; } while (0);
     if (!cdin_backend_frontend_can_mutate(driver)) do { (void)fprintf(stderr, "backend_session test failure at line %d\n", __LINE__); goto fail; } while (0);
 
