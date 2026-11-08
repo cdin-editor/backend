@@ -1573,16 +1573,15 @@ static int dispatch_pane_splitter_resize(cdin_lua_host *host, cdin_protocol_clie
 
     set_pane_result_state(host, client, request_id, split_id, layout_revision,
                           ratio_bp, "applied", current_revision, 1);
-    if (!decode_event_payload(L, message->payload, message->payload_length)) {
-        previous->pending_publish = 0;
-        previous->active = 0;
-        queue_protocol_error(host, client, "INVALID_SCHEMA", "splitter request could not be decoded by Runtime bridge");
-        lua_settop(L, base);
-        return 1;
-    }
+    /* Build a deliberately narrow Runtime event. Wire-only request IDs and
+     * revisions stay in Backend; Runtime receives only semantic split identity
+     * and ratio, plus trace context. */
+    lua_createtable(L, 0, 5);
     event_index = lua_absindex(L, -1);
-    lua_pushstring(L, "pane.set_split_ratio");
+    lua_pushliteral(L, "pane.set_split_ratio");
     lua_setfield(L, event_index, "type");
+    lua_pushstring(L, split_id);
+    lua_setfield(L, event_index, "split_id");
     lua_pushinteger(L, (lua_Integer)message->sequence);
     lua_setfield(L, event_index, "sequence");
     lua_pushinteger(L, (lua_Integer)client_id);
