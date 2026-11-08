@@ -22,6 +22,8 @@ extern "C" {
 #define CDIN_PROTOCOL_MAX_DEPTH 32u
 #define CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS (UINT64_C(1) << 9u)
 #define CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS_NAME "driver-role-events/1"
+#define CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE (UINT64_C(1) << 10u)
+#define CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE_NAME "pane-splitter-resize/1"
 
 typedef enum cdin_protocol_status {
     CDIN_PROTOCOL_OK = 0,
@@ -57,6 +59,7 @@ typedef enum cdin_protocol_message_type {
     CDIN_PROTOCOL_HELLO_ACK = 17,
     CDIN_PROTOCOL_DETACH_ACK = 18,
     CDIN_PROTOCOL_DRIVER_ROLE_CHANGED = 19,
+    CDIN_PROTOCOL_PANE_SPLITTER_RESULT = 20,
 
     /* Frontend -> Backend. */
     CDIN_PROTOCOL_HELLO = 64,
@@ -73,7 +76,8 @@ typedef enum cdin_protocol_message_type {
     CDIN_PROTOCOL_REQUEST_COMMAND = 75,
     CDIN_PROTOCOL_RESPONSE_CLIPBOARD = 76,
     CDIN_PROTOCOL_RESPONSE_DIALOG = 77,
-    CDIN_PROTOCOL_ACK = 78
+    CDIN_PROTOCOL_ACK = 78,
+    CDIN_PROTOCOL_PANE_SPLITTER_RESIZE = 79
 } cdin_protocol_message_type;
 
 typedef struct cdin_protocol_message_view {
