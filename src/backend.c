@@ -232,13 +232,20 @@ cdin_backend_status cdin_backend_start(cdin_backend *backend)
      * the Lua Runtime is only partially initialized. */
     failed_stage = "Frontend Protocol startup";
     if (backend->config.enable_headless_protocol) {
-        status = cdin_protocol_server_create(backend->config.max_frontends,
-                                             backend->config.outgoing_queue_capacity,
-                                             backend->config.max_pending_completions,
-                                             backend->session_id, CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS | CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE,
-                                             backend->config.max_message_bytes,
-                                             cdin_backend_protocol_log_sink, backend,
-                                             &backend->protocol);
+        {
+            uint64_t supported_capabilities = CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS;
+            if (backend->runtime != NULL &&
+                cdin_lua_host_supports_pane_splitter(backend->runtime)) {
+                supported_capabilities |= CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE;
+            }
+            status = cdin_protocol_server_create(backend->config.max_frontends,
+                                                 backend->config.outgoing_queue_capacity,
+                                                 backend->config.max_pending_completions,
+                                                 backend->session_id, supported_capabilities,
+                                                 backend->config.max_message_bytes,
+                                                 cdin_backend_protocol_log_sink, backend,
+                                                 &backend->protocol);
+        }
         if (status != CDIN_BACKEND_OK) goto fail;
         CDIN_BACKEND_INFO(backend->kernel, "PROTOCOL",
                           "in-process frontend protocol ready clients=%u queue_capacity=%u",
