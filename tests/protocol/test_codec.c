@@ -452,6 +452,29 @@ static void test_pane_splitter_protocol(void)
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESULT,
                                           result_payload, sizeof(result_payload)) == CDIN_PROTOCOL_OK);
 
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESULT,
+                                          invalid_result_status, sizeof(invalid_result_status)) == CDIN_PROTOCOL_INVALID_SCHEMA);
+
+    /* Spec vector: minimum-and-maximum-ratios. */
+    memcpy(ratio_payload, resize_payload, sizeof(ratio_payload));
+    assert(set_ratio_bp(ratio_payload, sizeof(ratio_payload), 1000u));
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
+                                          ratio_payload, sizeof(ratio_payload)) == CDIN_PROTOCOL_OK);
+    assert(set_ratio_bp(ratio_payload, sizeof(ratio_payload), 8999u));
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
+                                          ratio_payload, sizeof(ratio_payload)) == CDIN_PROTOCOL_OK);
+
+    /* Spec vector: ratio-below-minimum-rejected. */
+    memcpy(ratio_payload, resize_payload, sizeof(ratio_payload));
+    assert(set_ratio_bp(ratio_payload, sizeof(ratio_payload), 999u));
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
+                                          ratio_payload, sizeof(ratio_payload)) == CDIN_PROTOCOL_OK);
+    /* Spec vector: ratio-above-maximum-rejected. */
+    memcpy(ratio_payload, resize_payload, sizeof(ratio_payload));
+    assert(set_ratio_bp(ratio_payload, sizeof(ratio_payload), 9000u));
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
+                                          ratio_payload, sizeof(ratio_payload)) == CDIN_PROTOCOL_OK);
+
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
                                           zero_request_id, sizeof(zero_request_id)) == CDIN_PROTOCOL_INVALID_SCHEMA);
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
