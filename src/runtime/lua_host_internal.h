@@ -61,6 +61,18 @@ typedef struct cdin_lua_process {
     int active;
 } cdin_lua_process;
 
+typedef struct cdin_pane_result_state {
+    int active;
+    int pending_publish;
+    uint64_t client_id;
+    uint64_t request_id;
+    uint64_t expected_revision;
+    uint64_t ratio_bp;
+    uint64_t result_revision;
+    char split_id[129];
+    const char *status;
+} cdin_pane_result_state;
+
 struct cdin_lua_host {
     cdin_backend *backend;
     lua_State *state;
@@ -68,6 +80,7 @@ struct cdin_lua_host {
     int runtime_ref;
     int latest_ui_ref;
     size_t next_protocol_client;
+    cdin_pane_result_state pane_result;
     int started;
     /* Optional Backend-owned extension resolver state. Disabled unless an
      * explicit extension_source_root was configured by the application. */
