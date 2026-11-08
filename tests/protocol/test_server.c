@@ -295,6 +295,72 @@ static void test_atomic_ui_batch(void)
 }
 
 
+static void test_pane_splitter_result_and_snapshot_are_atomic(void)
+{
+    static const uint8_t result_payload[] = {
+        0xa3u,
+        0x66u, 's','t','a','t','u','s', 0x67u, 'a','p','p','l','i','e','d',
+        0x6au, 'r','e','q','u','e','s','t','_','i','d', 0x01u,
+        0x6fu, 'l','a','y','o','u','t','_','r','e','v','i','s','i','o','n', 0x08u
+    };
+    static const uint8_t layout_payload[] = {
+        0xa2u, 0x66u, 'l','a','y','o','u','t', 0xa2u,
+        0x64u, 'r','o','o','t', 0xf6u,
+        0x6bu, 'a','c','t','i','v','e','_','l','e','a','f', 0xf6u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x08u
+    };
+    cdin_protocol_server *server = NULL;
+    cdin_protocol_client *driver = NULL;
+    cdin_protocol_message messages[2];
+    cdin_protocol_message queued;
+    uint64_t flush_sequence = 0u;
+    char scope[16];
+    size_t scope_length = 0u;
+    uint64_t revision = 0u;
+
+    assert(cdin_protocol_server_create(1u, 4u, 1u, 0x11223344u, 0u,
+                                       1024u, NULL, NULL, &server) == CDIN_BACKEND_OK);
+    driver = new_attached(server, "pane-atomic-driver");
+    memset(messages, 0, sizeof(messages));
+    messages[0].type = CDIN_PROTOCOL_PANE_SPLITTER_RESULT;
+    messages[0].payload = result_payload;
+    messages[0].payload_length = sizeof(result_payload);
+    messages[1].type = CDIN_PROTOCOL_UI_LAYOUT;
+    messages[1].payload = layout_payload;
+    messages[1].payload_length = sizeof(layout_payload);
+
+    /* Both semantic messages plus the flush marker are admitted as one unit. */
+    assert(cdin_protocol_publish_snapshot(driver, messages, 2u, 8u,
+                                          &flush_sequence) == CDIN_BACKEND_OK);
+    assert(flush_sequence == 1u);
+    assert(cdin_protocol_pending_messages(driver) == 3u);
+    assert(cdin_protocol_client_snapshot_revision(driver) == 8u);
+
+    assert(cdin_protocol_message_at(driver, 0u, &queued) == CDIN_BACKEND_OK);
+    assert(queued.type == CDIN_PROTOCOL_PANE_SPLITTER_RESULT);
+    assert(queued.flush_sequence == flush_sequence);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESULT,
+                                          queued.payload, queued.payload_length) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_message_at(driver, 1u, &queued) == CDIN_BACKEND_OK);
+    assert(queued.type == CDIN_PROTOCOL_UI_LAYOUT);
+    assert(queued.flush_sequence == flush_sequence);
+    assert(cdin_protocol_message_at(driver, 2u, &queued) == CDIN_BACKEND_OK);
+    assert(queued.type == CDIN_PROTOCOL_UI_FLUSH);
+    assert(queued.flush_sequence == flush_sequence);
+    assert(cdin_protocol_payload_get_text(queued.payload, queued.payload_length,
+                                          "scope", scope, sizeof(scope), &scope_length) == CDIN_PROTOCOL_OK);
+    assert(scope_length == 8u && memcmp(scope, "snapshot", 8u) == 0);
+    assert(cdin_protocol_payload_get_uint(queued.payload, queued.payload_length,
+                                          "revision", &revision) == CDIN_PROTOCOL_OK);
+    assert(revision == 8u);
+
+    assert(cdin_protocol_ack(driver, flush_sequence) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_pending_messages(driver) == 0u);
+    assert(cdin_protocol_client_snapshot_revision(driver) == 8u);
+    assert(cdin_protocol_client_close(driver) == CDIN_BACKEND_OK);
+    cdin_protocol_server_destroy(server);
+}
+
 static void test_flush_slot_is_reserved(void)
 {
     static const uint8_t layout_payload[] = {
@@ -512,6 +578,7 @@ int main(void)
     test_pane_splitter_capability_driver_and_request_ids();
     test_queue_flush_ack_and_inbound();
     test_flush_slot_is_reserved();
+    test_pane_splitter_result_and_snapshot_are_atomic();
     test_atomic_ui_batch();
     puts("PASS protocol server: single-driver permissions, negotiated driver-role events, stable promotion, schema validation, coalescing, atomic UI batch, flush marker, ACK and binary event queue");
     return 0;
