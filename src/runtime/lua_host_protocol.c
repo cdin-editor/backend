@@ -1474,7 +1474,7 @@ static const char *pane_status_from_lua_error(lua_State *L, int error_index)
         }
         lua_pop(L, 1);
     }
-    return "busy";
+    return NULL;
 }
 
 static int dispatch_pane_splitter_resize(cdin_lua_host *host, cdin_protocol_client *client,
@@ -1518,8 +1518,7 @@ static int dispatch_pane_splitter_resize(cdin_lua_host *host, cdin_protocol_clie
         previous->request_id == request_id) {
         if (strcmp(previous->split_id, split_id) != 0 ||
             previous->expected_revision != layout_revision || previous->ratio_bp != ratio_bp) {
-            (void)publish_pane_result_only(host, client, request_id, "busy",
-                                           previous->result_revision);
+            queue_protocol_error(host, client, "INVALID_ARGUMENT", "request_id was reused with different splitter parameters");
             lua_settop(L, base);
             return 1;
         }
@@ -1535,13 +1534,13 @@ static int dispatch_pane_splitter_resize(cdin_lua_host *host, cdin_protocol_clie
     }
     if (previous->active && previous->pending_publish) {
         (void)latest_ui_revision(host, &current_revision);
-        (void)publish_pane_result_only(host, client, request_id, "busy", current_revision);
+        queue_protocol_error(host, client, "BUSY", "a prior splitter result is awaiting atomic publication");
         lua_settop(L, base);
         return 1;
     }
 
     if (!latest_ui_revision(host, &current_revision)) {
-        (void)publish_pane_result_only(host, client, request_id, "busy", 0u);
+        queue_protocol_error(host, client, "INVALID_STATE", "Runtime has no committed UI layout to resize");
         lua_settop(L, base);
         return 1;
     }
@@ -1564,8 +1563,8 @@ static int dispatch_pane_splitter_resize(cdin_lua_host *host, cdin_protocol_clie
                           ratio_bp, "applied", current_revision, 1);
     if (!decode_event_payload(L, message->payload, message->payload_length)) {
         previous->pending_publish = 0;
-        previous->status = "busy";
-        (void)publish_pane_result_only(host, client, request_id, "busy", current_revision);
+        previous->active = 0;
+        queue_protocol_error(host, client, "INVALID_SCHEMA", "splitter request could not be decoded by Runtime bridge");
         lua_settop(L, base);
         return 1;
     }
@@ -1595,9 +1594,14 @@ static int dispatch_pane_splitter_resize(cdin_lua_host *host, cdin_protocol_clie
     if (lua_pcall(L, 2, 1, 0) != LUA_OK) {
         const char *result_status = pane_status_from_lua_error(L, -1);
         previous->pending_publish = 0;
-        previous->status = result_status;
+        previous->active = 0;
         previous->result_revision = current_revision;
-        (void)publish_pane_result_only(host, client, request_id, result_status, current_revision);
+        if (result_status != NULL) {
+            previous->status = result_status;
+            (void)publish_pane_result_only(host, client, request_id, result_status, current_revision);
+        } else {
+            queue_protocol_error(host, client, "RUNTIME_ERROR", "Runtime failed to apply splitter resize");
+        }
         lua_settop(L, base);
         return 1;
     }
