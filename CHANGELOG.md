@@ -9,6 +9,7 @@
 > Registry metadata and CDIN Manifest version is `1.2.0`.
 
 - Correct the Protocol server regression test to expect the reattach role notification at the next per-connection frame sequence after the earlier promotion event.
+- Add an optional, snapshot-pinned Host document line-lookup bridge: callers provide document identity, byte offset and expected document version, and receive a versioned line result without exposing Kernel handles to Runtime.
 - Add optional bounded `host.fs:read_file()` for exact binary file bytes with structured file-read errors.
 - Add the disabled-by-default, Backend-owned Runtime extension resolver with canonical root confinement, no-follow file traversal, reparse/symlink denial, exact-byte source reads, owner-thread enforcement and per-module/module-count/aggregate limits.
 - Add trusted owner-thread Backend C entry points for Runtime extension load/unload; keep extension lifecycle out of Frontend Protocol and fail closed without an explicitly configured resolver root.
