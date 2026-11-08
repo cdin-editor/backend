@@ -750,6 +750,63 @@ static int ui_messages_fit_budget(cdin_lua_host *host, cdin_protocol_client *cli
     return 1;
 }
 
+static int build_pane_result_payload(uint64_t request_id, const char *status,
+                                      uint64_t layout_revision, size_t limit,
+                                      cbor_buffer *payload)
+{
+    cbor_buffer status_value = { 0 }, request_value = { 0 }, revision_value = { 0 };
+    cbor_map_entry entries[3];
+    int ok = 0;
+    if (status == NULL || status[0] == '\0' ||
+        !make_text_value(status, strlen(status), &status_value, limit) ||
+        !make_uint_value(request_id, &request_value, limit) ||
+        !make_uint_value(layout_revision, &revision_value, limit)) goto done;
+    /* Canonical CBOR key order: status (6), request_id (10), layout_revision (15). */
+    entries[0].key = "status"; entries[0].key_length = 6u;
+    entries[0].value = status_value.data; entries[0].value_length = status_value.length;
+    entries[1].key = "request_id"; entries[1].key_length = 10u;
+    entries[1].value = request_value.data; entries[1].value_length = request_value.length;
+    entries[2].key = "layout_revision"; entries[2].key_length = 15u;
+    entries[2].value = revision_value.data; entries[2].value_length = revision_value.length;
+    ok = make_map_payload(payload, entries, 3u, limit);
+done:
+    buffer_free(&status_value);
+    buffer_free(&request_value);
+    buffer_free(&revision_value);
+    return ok;
+}
+
+static cdin_backend_status publish_pane_result_only(cdin_lua_host *host,
+                                                      cdin_protocol_client *client,
+                                                      uint64_t request_id,
+                                                      const char *status,
+                                                      uint64_t layout_revision)
+{
+    cbor_buffer payload = { 0 };
+    cdin_protocol_message response;
+    uint64_t flush_sequence = 0u;
+    cdin_backend_status result;
+    size_t limit = (size_t)cdin_protocol_client_payload_limit(client);
+    if (!build_pane_result_payload(request_id, status, layout_revision, limit, &payload) ||
+        payload.data == NULL || payload.length == 0u) {
+        buffer_free(&payload);
+        return CDIN_BACKEND_LIMIT_EXCEEDED;
+    }
+    memset(&response, 0, sizeof(response));
+    response.type = CDIN_PROTOCOL_PANE_SPLITTER_RESULT;
+    response.payload = payload.data;
+    response.payload_length = payload.length;
+    result = cdin_protocol_publish_batch(client, &response, 1u, &flush_sequence);
+    if (result != CDIN_BACKEND_OK) {
+        CDIN_BACKEND_WARN(host->backend->kernel, "PROTOCOL",
+            "pane splitter result deferred client_id=%llu request_id=%llu status=%s queue_status=%s",
+            (unsigned long long)cdin_protocol_client_id(client),
+            (unsigned long long)request_id, status, cdin_backend_status_name(result));
+    }
+    buffer_free(&payload);
+    return result;
+}
+
 static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_protocol_client *client,
                                                     int model_index)
 {
@@ -792,7 +849,7 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
         status = CDIN_BACKEND_LIMIT_EXCEEDED;
         goto done;
     }
-    capacity = 6u + panel_count + (view_count * 3u);
+    capacity = 6u + panel_count + (view_count * 3u) + (include_pane_result ? 1u : 0u);
     if (capacity == 0u || capacity > SIZE_MAX / sizeof(*messages) ||
         capacity > SIZE_MAX / sizeof(*batch)) {
         status = CDIN_BACKEND_LIMIT_EXCEEDED;
@@ -802,6 +859,23 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
     batch = (cdin_protocol_message *)calloc(capacity, sizeof(*batch));
     if (messages == NULL || batch == NULL) { status = CDIN_BACKEND_NO_MEMORY; goto done; }
 
+    if (include_pane_result) {
+        cbor_buffer pane_result = { 0 };
+        if (!build_pane_result_payload(host->pane_result.request_id, "applied",
+                                       revision, limit, &pane_result) ||
+            !append_ui_message(messages, capacity, &message_count,
+                               CDIN_PROTOCOL_PANE_SPLITTER_RESULT, &pane_result)) {
+            buffer_free(&pane_result);
+            status = CDIN_BACKEND_LIMIT_EXCEEDED;
+            goto done;
+        }
+        buffer_free(&pane_result);
+        if (!ui_messages_fit_budget(host, client, messages, message_count, limit,
+                                    snapshot_limit, "pane.splitter.result")) {
+            status = CDIN_BACKEND_LIMIT_EXCEEDED;
+            goto done;
+        }
+    }
     if (!build_options_message(L, model, theme, theme_length, revision, messages, capacity, &message_count, limit)) {
         log_snapshot_build_failure(host, client, "ui.options-encode", messages, message_count);
         status = CDIN_BACKEND_LIMIT_EXCEEDED; goto done;
@@ -920,6 +994,10 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
     if (status != CDIN_BACKEND_OK) {
         log_snapshot_build_failure(host, client, "protocol.publish_snapshot", messages, message_count);
     }
+    if (status == CDIN_BACKEND_OK && include_pane_result) {
+        host->pane_result.pending_publish = 0;
+        host->pane_result.result_revision = revision;
+    }
     if (status == CDIN_BACKEND_OK) {
         CDIN_BACKEND_TRACE(host->backend->kernel, "PROTOCOL",
             "UI snapshot queued client_id=%llu revision=%llu messages=%llu flush=%llu",
@@ -953,7 +1031,9 @@ static cdin_backend_status publish_latest_ui(cdin_lua_host *host, cdin_protocol_
         uint64_t sent_revision = cdin_protocol_client_snapshot_revision(client);
         if (!model_get_uint(L, -1, "revision", &latest_revision)) {
             status = CDIN_BACKEND_INVALID_ARGUMENT;
-        } else if (cdin_protocol_client_has_snapshot(client) && latest_revision <= sent_revision) {
+        } else if (cdin_protocol_client_has_snapshot(client) && latest_revision <= sent_revision &&
+                   !(host->pane_result.active && host->pane_result.pending_publish &&
+                     host->pane_result.client_id == cdin_protocol_client_id(client))) {
             status = CDIN_BACKEND_OK;
         } else {
             status = publish_model_to_client(host, client, -1);
