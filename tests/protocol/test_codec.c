@@ -460,6 +460,7 @@ static void test_pane_splitter_protocol(void)
     assert(set_ratio_bp(ratio_payload, sizeof(ratio_payload), 1000u));
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
                                           ratio_payload, sizeof(ratio_payload)) == CDIN_PROTOCOL_OK);
+    memcpy(ratio_payload, resize_payload, sizeof(ratio_payload));
     assert(set_ratio_bp(ratio_payload, sizeof(ratio_payload), 8999u));
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
                                           ratio_payload, sizeof(ratio_payload)) == CDIN_PROTOCOL_OK);
