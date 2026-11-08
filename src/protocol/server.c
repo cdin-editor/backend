@@ -329,6 +329,12 @@ int cdin_protocol_can_mutate(const cdin_protocol_client *client)
     return client != NULL && !client->closed && client->attached && client->driver;
 }
 
+int cdin_protocol_client_has_capability(const cdin_protocol_client *client, uint64_t capability)
+{
+    return client != NULL && !client->closed && capability != 0u &&
+        (client->accepted_capabilities & capability) == capability;
+}
+
 static cdin_backend_status protocol_enqueue(cdin_protocol_client *client,
                                             const cdin_protocol_message *message,
                                             int is_flush_marker)
@@ -772,6 +778,12 @@ cdin_backend_status cdin_protocol_receive(cdin_protocol_client *client,
         message->type == CDIN_PROTOCOL_HELLO || message->type == CDIN_PROTOCOL_ATTACH ||
         message->type == CDIN_PROTOCOL_DETACH || message->type == CDIN_PROTOCOL_ACK) {
         return CDIN_BACKEND_INVALID_ARGUMENT;
+    }
+    if (message->type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE &&
+        !cdin_protocol_client_has_capability(client, CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE)) {
+        cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "pane_splitter_capability_rejected",
+                          client->id, CDIN_BACKEND_UNSUPPORTED, (uint64_t)message->type);
+        return CDIN_BACKEND_UNSUPPORTED;
     }
     if (cdin_protocol_message_requires_driver(message->type) && !client->driver) {
         cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "observer_mutation_rejected",
