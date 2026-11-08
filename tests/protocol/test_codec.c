@@ -424,7 +424,6 @@ static void test_pane_splitter_protocol(void)
         0x6au, 'r','e','q','u','e','s','t','_','i','d', 0x00u,
         0x6fu, 'l','a','y','o','u','t','_','r','e','v','i','s','i','o','n', 0x07u
     };
-    uint8_t bad[sizeof(resize_payload)];
     uint8_t frame[512];
     size_t frame_length = 0u;
     cdin_protocol_message_view input = {
