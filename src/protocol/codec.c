@@ -821,7 +821,7 @@ static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
         break;
     case CDIN_PROTOCOL_PANE_SPLITTER_RESULT: {
         static const char *const result_statuses[] = {
-            "applied", "stale_revision", "not_found", "invalid_ratio", "not_driver", "unsupported", "busy"
+            "applied", "stale_revision", "not_found", "invalid_ratio", "not_driver", "unsupported"
         };
         if (!cbor_field_uint(payload, payload_length, "request_id", &request_id) ||
             request_id == 0u ||
