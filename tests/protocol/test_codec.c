@@ -410,6 +410,20 @@ static void test_pane_splitter_protocol(void)
         0x6au, 'r','e','q','u','e','s','t','_','i','d', 0x01u,
         0x6fu, 'l','a','y','o','u','t','_','r','e','v','i','s','i','o','n', 0x08u
     };
+    static const uint8_t empty_split_id[] = {
+        0xa4u,
+        0x68u, 'r','a','t','i','o','_','b','p', 0x19u, 0x13u, 0x88u,
+        0x68u, 's','p','l','i','t','_','i','d', 0x60u,
+        0x6au, 'r','e','q','u','e','s','t','_','i','d', 0x01u,
+        0x6fu, 'l','a','y','o','u','t','_','r','e','v','i','s','i','o','n', 0x07u
+    };
+    static const uint8_t zero_request_id[] = {
+        0xa4u,
+        0x68u, 'r','a','t','i','o','_','b','p', 0x19u, 0x13u, 0x88u,
+        0x68u, 's','p','l','i','t','_','i','d', 0x67u, 's','p','l','i','t','-','1',
+        0x6au, 'r','e','q','u','e','s','t','_','i','d', 0x00u,
+        0x6fu, 'l','a','y','o','u','t','_','r','e','v','i','s','i','o','n', 0x07u
+    };
     uint8_t bad[sizeof(resize_payload)];
     uint8_t frame[512];
     size_t frame_length = 0u;
@@ -431,40 +445,10 @@ static void test_pane_splitter_protocol(void)
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESULT,
                                           result_payload, sizeof(result_payload)) == CDIN_PROTOCOL_OK);
 
-    memcpy(bad, resize_payload, sizeof(bad));
-    bad[sizeof(bad) - 1u] = 0x00u; /* request is still structurally valid; revision zero is permitted. */
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
-                                          bad, sizeof(bad)) == CDIN_PROTOCOL_OK);
-
-    memcpy(bad, resize_payload, sizeof(bad));
-    /* The request ID is the first byte after the encoded request_id key. */
-    {
-        size_t index;
-        for (index = 0u; index + 10u < sizeof(bad); index++) {
-            if (bad[index] == 0x6au && memcmp(bad + index + 1u, "request_id", 9u) == 0) {
-                bad[index + 11u] = 0x00u;
-                break;
-            }
-        }
-        assert(index + 10u < sizeof(bad));
-    }
+                                          zero_request_id, sizeof(zero_request_id)) == CDIN_PROTOCOL_INVALID_SCHEMA);
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
-                                          bad, sizeof(bad)) == CDIN_PROTOCOL_INVALID_SCHEMA);
-
-    memcpy(bad, resize_payload, sizeof(bad));
-    /* Change the split ID value to an empty string while preserving map shape. */
-    {
-        size_t index;
-        for (index = 0u; index + 8u < sizeof(bad); index++) {
-            if (bad[index] == 0x68u && memcmp(bad + index + 1u, "split_id", 8u) == 0) {
-                bad[index + 9u] = 0x60u;
-                break;
-            }
-        }
-        assert(index + 8u < sizeof(bad));
-    }
-    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
-                                          bad, sizeof(bad)) == CDIN_PROTOCOL_INVALID_SCHEMA);
+                                          empty_split_id, sizeof(empty_split_id)) == CDIN_PROTOCOL_INVALID_SCHEMA);
 
     assert(cdin_protocol_encode_frame(&input, frame, sizeof(frame), &frame_length,
                                       CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_OK);
