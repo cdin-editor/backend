@@ -50,6 +50,7 @@ cdin_backend_status cdin_protocol_attach(cdin_protocol_client *client);
 cdin_backend_status cdin_protocol_detach(cdin_protocol_client *client);
 cdin_backend_status cdin_protocol_client_close(cdin_protocol_client *client);
 int cdin_protocol_can_mutate(const cdin_protocol_client *client);
+int cdin_protocol_client_has_capability(const cdin_protocol_client *client, uint64_t capability);
 cdin_backend_status cdin_protocol_enqueue(cdin_protocol_client *client,
                                            const cdin_protocol_message *message);
 /* Atomically append an ordered UI update and its final ui.flush marker.
