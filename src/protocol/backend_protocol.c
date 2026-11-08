@@ -193,7 +193,7 @@ static int capability_requested(const uint8_t *array, size_t length, const char 
 static cdin_backend_status queue_hello_ack(cdin_backend_frontend *frontend,
                                            const cdin_backend_hello_ack *ack, uint64_t driver_role_epoch)
 {
-    uint8_t payload[128];
+    uint8_t payload[256];
     size_t offset = 0u;
     cdin_protocol_message message;
     /* Deterministic CBOR map order is by encoded key length, then lexical order. */
