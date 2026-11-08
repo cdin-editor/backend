@@ -48,6 +48,7 @@ struct cdin_protocol_client {
     size_t inbound_count;
     size_t inbound_capacity;
     uint64_t last_inbound_sequence;
+    uint64_t last_pane_request_id;
     uint64_t next_message_sequence;
     uint64_t next_flush_sequence;
     uint64_t acknowledged_sequence;
@@ -773,6 +774,7 @@ cdin_backend_status cdin_protocol_receive(cdin_protocol_client *client,
 {
     cdin_protocol_queued *item;
     uint8_t *copy = NULL;
+    uint64_t pane_request_id = 0u;
     if (client == NULL || message == NULL || client->closed || !client->attached) return CDIN_BACKEND_INVALID_STATE;
     if (!cdin_protocol_message_is_inbound(message->type) ||
         message->type == CDIN_PROTOCOL_HELLO || message->type == CDIN_PROTOCOL_ATTACH ||
@@ -784,6 +786,15 @@ cdin_backend_status cdin_protocol_receive(cdin_protocol_client *client,
         cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "pane_splitter_capability_rejected",
                           client->id, CDIN_BACKEND_UNSUPPORTED, (uint64_t)message->type);
         return CDIN_BACKEND_UNSUPPORTED;
+    }
+    if (message->type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE) {
+        if (cdin_protocol_payload_get_uint(message->payload, message->payload_length,
+                                           "request_id", &pane_request_id) != CDIN_PROTOCOL_OK ||
+            pane_request_id < client->last_pane_request_id) {
+            cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "pane_splitter_request_id_rejected",
+                              client->id, CDIN_BACKEND_INVALID_ARGUMENT, pane_request_id);
+            return CDIN_BACKEND_INVALID_ARGUMENT;
+        }
     }
     if (cdin_protocol_message_requires_driver(message->type) && !client->driver) {
         cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "observer_mutation_rejected",
@@ -818,6 +829,8 @@ cdin_backend_status cdin_protocol_receive(cdin_protocol_client *client,
     item->flush_sequence = message->sequence;
     item->payload = copy;
     item->payload_length = message->payload_length;
+    if (message->type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE &&
+        pane_request_id > client->last_pane_request_id) client->last_pane_request_id = pane_request_id;
     cdin_protocol_log(client->server, CDIN_BACKEND_LOG_TRACE, "input_queued",
                       client->id, CDIN_BACKEND_OK, message->sequence);
     return CDIN_BACKEND_OK;
