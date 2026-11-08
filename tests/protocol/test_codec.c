@@ -418,6 +418,12 @@ static void test_pane_splitter_protocol(void)
         0x6au, 'r','e','q','u','e','s','t','_','i','d', 0x01u,
         0x6fu, 'l','a','y','o','u','t','_','r','e','v','i','s','i','o','n', 0x07u
     };
+    static const uint8_t invalid_result_status[] = {
+        0xa3u,
+        0x66u, 's','t','a','t','u','s', 0x64u, 'b','u','s','y',
+        0x6au, 'r','e','q','u','e','s','t','_','i','d', 0x01u,
+        0x6fu, 'l','a','y','o','u','t','_','r','e','v','i','s','i','o','n', 0x08u
+    };
     static const uint8_t zero_request_id[] = {
         0xa4u,
         0x68u, 'r','a','t','i','o','_','b','p', 0x19u, 0x13u, 0x88u,
@@ -426,6 +432,7 @@ static void test_pane_splitter_protocol(void)
         0x6fu, 'l','a','y','o','u','t','_','r','e','v','i','s','i','o','n', 0x07u
     };
     uint8_t frame[512];
+    uint8_t ratio_payload[sizeof(resize_payload)];
     size_t frame_length = 0u;
     cdin_protocol_message_view input = {
         CDIN_PROTOCOL_VERSION_MAJOR, CDIN_PROTOCOL_VERSION_MINOR, 9u,
