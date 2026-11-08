@@ -819,6 +819,8 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
     lua_map_key panel_keys[UI_MAX_MODEL_PANELS];
     size_t view_count = 0u, panel_count = 0u, message_count = 0u, capacity;
     size_t index;
+    int include_pane_result = host->pane_result.active && host->pane_result.pending_publish &&
+        host->pane_result.client_id == cdin_protocol_client_id(client);
     size_t limit = (size_t)host->backend->config.max_message_bytes;
     size_t snapshot_limit = (size_t)host->backend->config.max_snapshot_bytes;
     ui_message *messages = NULL;
@@ -845,7 +847,7 @@ static cdin_backend_status publish_model_to_client(cdin_lua_host *host, cdin_pro
     }
     panels_index = lua_absindex(L, -1);
 
-    if (view_count > (SIZE_MAX - 6u - panel_count) / 3u) {
+    if (view_count > (SIZE_MAX - 6u - panel_count - (include_pane_result ? 1u : 0u)) / 3u) {
         status = CDIN_BACKEND_LIMIT_EXCEEDED;
         goto done;
     }
