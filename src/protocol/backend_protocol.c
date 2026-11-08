@@ -397,9 +397,9 @@ cdin_backend_status cdin_backend_frontend_receive(cdin_backend_frontend *fronten
                 request_id != 0u) {
                 const char *result_status = status == CDIN_BACKEND_UNSUPPORTED
                     ? "unsupported" : "not_driver";
-                cdin_backend_status reply = cdin_lua_host_publish_pane_result(
+                cdin_backend_status pane_reply_status = cdin_lua_host_publish_pane_result(
                     backend->runtime, (cdin_protocol_client *)frontend, request_id, result_status);
-                if (reply == CDIN_BACKEND_OK) return CDIN_BACKEND_OK;
+                if (pane_reply_status == CDIN_BACKEND_OK) return CDIN_BACKEND_OK;
             }
         }
         return status;
