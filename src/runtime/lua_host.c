@@ -40,6 +40,14 @@ cdin_backend_status cdin_lua_host_publish_latest_ui(cdin_lua_host *host, cdin_pr
     (void)host; (void)client;
     return CDIN_BACKEND_UNSUPPORTED;
 }
+cdin_backend_status cdin_lua_host_publish_pane_result(cdin_lua_host *host,
+                                                        cdin_protocol_client *client,
+                                                        uint64_t request_id,
+                                                        const char *status)
+{
+    (void)host; (void)client; (void)request_id; (void)status;
+    return CDIN_BACKEND_UNSUPPORTED;
+}
 cdin_backend_status cdin_lua_host_shutdown(cdin_lua_host *host)
 {
     (void)host;
