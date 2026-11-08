@@ -385,7 +385,24 @@ cdin_backend_status cdin_backend_frontend_receive(cdin_backend_frontend *fronten
         }
         return CDIN_BACKEND_OK;
     default:
-        return cdin_protocol_receive((cdin_protocol_client *)frontend, &view);
+        status = cdin_protocol_receive((cdin_protocol_client *)frontend, &view);
+        if (view.type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE &&
+            (status == CDIN_BACKEND_UNSUPPORTED || status == CDIN_BACKEND_PERMISSION_DENIED)) {
+            cdin_backend *backend = (cdin_backend *)cdin_protocol_client_server_context(
+                (cdin_protocol_client *)frontend);
+            uint64_t request_id = 0u;
+            if (backend != NULL && backend->runtime != NULL &&
+                cdin_protocol_payload_get_uint(view.payload, view.payload_length,
+                                               "request_id", &request_id) == CDIN_PROTOCOL_OK &&
+                request_id != 0u) {
+                const char *result_status = status == CDIN_BACKEND_UNSUPPORTED
+                    ? "unsupported" : "not_driver";
+                cdin_backend_status reply = cdin_lua_host_publish_pane_result(
+                    backend->runtime, (cdin_protocol_client *)frontend, request_id, result_status);
+                if (reply == CDIN_BACKEND_OK) return CDIN_BACKEND_OK;
+            }
+        }
+        return status;
     }
 }
 
