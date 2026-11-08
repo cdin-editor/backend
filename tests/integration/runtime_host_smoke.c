@@ -168,14 +168,23 @@ int main(void)
         cdin_backend_destroy(backend);
         return 1;
     }
+    /* Close attached clients before shutdown destroys the Protocol server. */
+    if (observer != NULL) {
+        (void)cdin_backend_frontend_detach(observer);
+        (void)cdin_backend_frontend_close(observer);
+        observer = NULL;
+    }
+    if (driver != NULL) {
+        (void)cdin_backend_frontend_detach(driver);
+        (void)cdin_backend_frontend_close(driver);
+        driver = NULL;
+    }
     status = cdin_backend_shutdown(backend, 0);
     if (status != CDIN_BACKEND_OK) {
         (void)fprintf(stderr, "Backend/Runtime graceful shutdown failed: %s\n", cdin_backend_status_name(status));
         cdin_backend_destroy(backend);
         return 1;
     }
-    if (observer != NULL) (void)cdin_backend_frontend_close(observer);
-    if (driver != NULL) (void)cdin_backend_frontend_close(driver);
     cdin_backend_destroy(backend);
     (void)puts("PASS runtime_host_smoke: real Lua 5.4 state, production cdin-runtime load/start/pump/shutdown");
     return 0;
