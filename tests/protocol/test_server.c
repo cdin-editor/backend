@@ -297,6 +297,7 @@ static void test_atomic_ui_batch(void)
 
 static void test_pane_splitter_result_and_snapshot_are_atomic(void)
 {
+    /* Spec vector: success-result-precedes-atomic-snapshot. */
     static const uint8_t result_payload[] = {
         0xa3u,
         0x66u, 's','t','a','t','u','s', 0x67u, 'a','p','p','l','i','e','d',
@@ -477,6 +478,7 @@ static void test_driver_role_notification_is_capability_gated(void)
 
 static void test_pane_splitter_capability_driver_and_request_ids(void)
 {
+    /* Spec vector: stale-layout-revision-rejected is checked by Host dispatch. */
     static const uint8_t request_one[] = {
         0xa4u,
         0x68u, 'r','a','t','i','o','_','b','p', 0x19u, 0x13u, 0x88u,
@@ -528,6 +530,7 @@ static void test_pane_splitter_capability_driver_and_request_ids(void)
     assert(!cdin_protocol_client_has_capability(legacy, CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE));
     assert(cdin_protocol_attach(legacy) == CDIN_BACKEND_OK);
 
+    /* Spec vector: horizontal-split-commit; accepted capability and Driver lease. */
     memset(&request, 0, sizeof(request));
     request.major = CDIN_PROTOCOL_VERSION_MAJOR;
     request.minor = CDIN_PROTOCOL_VERSION_MINOR;
@@ -560,8 +563,10 @@ static void test_pane_splitter_capability_driver_and_request_ids(void)
     assert(cdin_protocol_receive(driver, &request) == CDIN_BACKEND_INVALID_ARGUMENT);
 
     request.sequence = 1u;
+    /* Spec vector: observer-cannot-resize. */
     assert(cdin_protocol_receive(observer, &request) == CDIN_BACKEND_PERMISSION_DENIED);
     assert(cdin_protocol_pending_events(observer) == 0u);
+    /* Spec vector: capability-absent-does-not-send-extension. */
     assert(cdin_protocol_receive(legacy, &request) == CDIN_BACKEND_UNSUPPORTED);
     assert(cdin_protocol_pending_events(legacy) == 0u);
 
