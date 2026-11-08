@@ -1417,6 +1417,196 @@ static int lua_call_read_view_lines(cdin_lua_host *host, cdin_protocol_client *c
     return 1;
 }
 
+static int latest_ui_revision(cdin_lua_host *host, uint64_t *out_revision)
+{
+    lua_State *L;
+    int base;
+    int ok;
+    if (host == NULL || host->state == NULL || out_revision == NULL || host->latest_ui_ref == LUA_NOREF)
+        return 0;
+    L = host->state;
+    base = lua_gettop(L);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, host->latest_ui_ref);
+    ok = model_get_uint(L, -1, "revision", out_revision);
+    lua_settop(L, base);
+    return ok;
+}
+
+static void set_pane_result_state(cdin_lua_host *host, cdin_protocol_client *client,
+                                  uint64_t request_id, const char *split_id,
+                                  uint64_t layout_revision, uint64_t ratio_bp,
+                                  const char *status, uint64_t result_revision,
+                                  int pending_publish)
+{
+    cdin_pane_result_state *state = &host->pane_result;
+    memset(state, 0, sizeof(*state));
+    state->active = 1;
+    state->pending_publish = pending_publish;
+    state->client_id = cdin_protocol_client_id(client);
+    state->request_id = request_id;
+    state->expected_revision = layout_revision;
+    state->ratio_bp = ratio_bp;
+    state->result_revision = result_revision;
+    state->status = status;
+    (void)snprintf(state->split_id, sizeof(state->split_id), "%s", split_id);
+}
+
+static const char *pane_status_from_lua_error(lua_State *L, int error_index)
+{
+    const char *code = NULL;
+    error_index = lua_absindex(L, error_index);
+    if (lua_istable(L, error_index)) {
+        lua_getfield(L, error_index, "code");
+        if (lua_type(L, -1) == LUA_TSTRING) code = lua_tostring(L, -1);
+        if (code != NULL && strcmp(code, "NOT_FOUND") == 0) {
+            lua_pop(L, 1);
+            return "not_found";
+        }
+        if (code != NULL && strcmp(code, "INVALID_ARGUMENT") == 0) {
+            lua_pop(L, 1);
+            return "invalid_ratio";
+        }
+        if (code != NULL && strcmp(code, "UNSUPPORTED") == 0) {
+            lua_pop(L, 1);
+            return "unsupported";
+        }
+        lua_pop(L, 1);
+    }
+    return "busy";
+}
+
+static int dispatch_pane_splitter_resize(cdin_lua_host *host, cdin_protocol_client *client,
+                                          const cdin_protocol_message *message)
+{
+    lua_State *L = host->state;
+    int base = lua_gettop(L);
+    int event_index, runtime_index;
+    char split_id[129];
+    size_t split_id_length = 0u;
+    uint64_t request_id = 0u, layout_revision = 0u, ratio_bp = 0u, current_revision = 0u;
+    cdin_protocol_status decoded;
+    cdin_pane_result_state *previous = &host->pane_result;
+    const uint64_t client_id = cdin_protocol_client_id(client);
+
+    decoded = cdin_protocol_payload_get_uint(message->payload, message->payload_length,
+                                             "request_id", &request_id);
+    if (decoded != CDIN_PROTOCOL_OK || request_id == 0u) return 1;
+    decoded = cdin_protocol_payload_get_uint(message->payload, message->payload_length,
+                                             "layout_revision", &layout_revision);
+    if (decoded != CDIN_PROTOCOL_OK) return 1;
+    decoded = cdin_protocol_payload_get_uint(message->payload, message->payload_length,
+                                             "ratio_bp", &ratio_bp);
+    if (decoded != CDIN_PROTOCOL_OK) return 1;
+    decoded = cdin_protocol_payload_get_text(message->payload, message->payload_length,
+                                             "split_id", split_id, sizeof(split_id), &split_id_length);
+    if (decoded != CDIN_PROTOCOL_OK || split_id_length == 0u) return 1;
+
+    if (!cdin_protocol_client_has_capability(client, CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE)) {
+        (void)publish_pane_result_only(host, client, request_id, "unsupported", 0u);
+        lua_settop(L, base);
+        return 1;
+    }
+    if (!cdin_protocol_can_mutate(client)) {
+        (void)publish_pane_result_only(host, client, request_id, "not_driver", 0u);
+        lua_settop(L, base);
+        return 1;
+    }
+
+    if (previous->active && previous->client_id == client_id &&
+        previous->request_id == request_id) {
+        if (strcmp(previous->split_id, split_id) != 0 ||
+            previous->expected_revision != layout_revision || previous->ratio_bp != ratio_bp) {
+            (void)publish_pane_result_only(host, client, request_id, "busy",
+                                           previous->result_revision);
+            lua_settop(L, base);
+            return 1;
+        }
+        if (previous->pending_publish) {
+            (void)publish_latest_ui(host, client);
+        } else {
+            (void)publish_pane_result_only(host, client, request_id,
+                                           previous->status != NULL ? previous->status : "applied",
+                                           previous->result_revision);
+        }
+        lua_settop(L, base);
+        return 1; /* Duplicate/retry: publication only, never mutate twice. */
+    }
+    if (previous->active && previous->pending_publish) {
+        (void)latest_ui_revision(host, &current_revision);
+        (void)publish_pane_result_only(host, client, request_id, "busy", current_revision);
+        lua_settop(L, base);
+        return 1;
+    }
+
+    if (!latest_ui_revision(host, &current_revision)) {
+        (void)publish_pane_result_only(host, client, request_id, "busy", 0u);
+        lua_settop(L, base);
+        return 1;
+    }
+    if (layout_revision != current_revision) {
+        set_pane_result_state(host, client, request_id, split_id, layout_revision,
+                              ratio_bp, "stale_revision", current_revision, 0);
+        (void)publish_pane_result_only(host, client, request_id, "stale_revision", current_revision);
+        lua_settop(L, base);
+        return 1;
+    }
+    if (ratio_bp < 1000u || ratio_bp > 8999u) {
+        set_pane_result_state(host, client, request_id, split_id, layout_revision,
+                              ratio_bp, "invalid_ratio", current_revision, 0);
+        (void)publish_pane_result_only(host, client, request_id, "invalid_ratio", current_revision);
+        lua_settop(L, base);
+        return 1;
+    }
+
+    set_pane_result_state(host, client, request_id, split_id, layout_revision,
+                          ratio_bp, "applied", current_revision, 1);
+    if (!decode_event_payload(L, message->payload, message->payload_length)) {
+        previous->pending_publish = 0;
+        previous->status = "busy";
+        (void)publish_pane_result_only(host, client, request_id, "busy", current_revision);
+        lua_settop(L, base);
+        return 1;
+    }
+    event_index = lua_absindex(L, -1);
+    lua_pushstring(L, "pane.set_split_ratio");
+    lua_setfield(L, event_index, "type");
+    lua_pushinteger(L, (lua_Integer)message->sequence);
+    lua_setfield(L, event_index, "sequence");
+    lua_pushinteger(L, (lua_Integer)client_id);
+    lua_setfield(L, event_index, "client_id");
+    lua_pushnumber(L, (lua_Number)((double)ratio_bp / 10000.0));
+    lua_setfield(L, event_index, "ratio");
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, host->runtime_ref);
+    runtime_index = lua_absindex(L, -1);
+    lua_getfield(L, runtime_index, "handle_frontend_event");
+    if (!lua_isfunction(L, -1)) {
+        previous->pending_publish = 0;
+        previous->status = "unsupported";
+        previous->result_revision = current_revision;
+        (void)publish_pane_result_only(host, client, request_id, "unsupported", current_revision);
+        lua_settop(L, base);
+        return 1;
+    }
+    lua_pushvalue(L, runtime_index);
+    lua_pushvalue(L, event_index);
+    if (lua_pcall(L, 2, 1, 0) != LUA_OK) {
+        const char *result_status = pane_status_from_lua_error(L, -1);
+        previous->pending_publish = 0;
+        previous->status = result_status;
+        previous->result_revision = current_revision;
+        (void)publish_pane_result_only(host, client, request_id, result_status, current_revision);
+        lua_settop(L, base);
+        return 1;
+    }
+    /* Runtime publishes its semantic UI synchronously. The callback above
+     * prepends pane.splitter.result to this client's snapshot batch. If queue
+     * admission failed, pane_result remains pending and a same-ID retry or ACK
+     * retries publication without repeating the model mutation. */
+    lua_settop(L, base);
+    return 1;
+}
+
 static int dispatch_frontend_event(cdin_lua_host *host, cdin_protocol_client *client,
                                    const cdin_protocol_message *message)
 {
@@ -1431,6 +1621,10 @@ static int dispatch_frontend_event(cdin_lua_host *host, cdin_protocol_client *cl
         return 1;
     }
     event_index = lua_absindex(L, -1);
+    if (message->type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE) {
+        lua_settop(L, base);
+        return dispatch_pane_splitter_resize(host, client, message);
+    }
     lua_pushstring(L, type_name); lua_setfield(L, event_index, "type");
     lua_pushinteger(L, (lua_Integer)message->sequence); lua_setfield(L, event_index, "sequence");
     lua_pushinteger(L, (lua_Integer)cdin_protocol_client_id(client)); lua_setfield(L, event_index, "client_id");
