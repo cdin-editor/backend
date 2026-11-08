@@ -14,6 +14,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 
 static size_t write_cbor_uint(uint8_t *out, uint64_t value)
