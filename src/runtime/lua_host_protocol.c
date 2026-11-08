@@ -1434,6 +1434,18 @@ static int latest_ui_revision(cdin_lua_host *host, uint64_t *out_revision)
     return ok;
 }
 
+cdin_backend_status cdin_lua_host_publish_pane_result(cdin_lua_host *host,
+                                                        cdin_protocol_client *client,
+                                                        uint64_t request_id,
+                                                        const char *status)
+{
+    uint64_t current_revision = 0u;
+    if (host == NULL || client == NULL || request_id == 0u ||
+        !cdin_backend_is_owner(host->backend)) return CDIN_BACKEND_INVALID_STATE;
+    if (!latest_ui_revision(host, &current_revision)) current_revision = 0u;
+    return publish_pane_result_only(host, client, request_id, status, current_revision);
+}
+
 static void set_pane_result_state(cdin_lua_host *host, cdin_protocol_client *client,
                                   uint64_t request_id, const char *split_id,
                                   uint64_t layout_revision, uint64_t ratio_bp,
