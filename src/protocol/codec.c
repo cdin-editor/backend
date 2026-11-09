@@ -835,6 +835,8 @@ static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
     uint64_t ratio_bp;
     uint64_t request_id;
     uint64_t composition_id;
+    const uint8_t *committed_ime_text = NULL;
+    size_t committed_ime_text_length = 0u;
     static const char *const ime_cancel_reasons[] = {
         "ime_cancelled", "focus_lost", "view_changed", "stale_document",
         "selection_changed", "view_removed", "driver_revoked", "session_reset"
@@ -851,7 +853,10 @@ static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
         break;
     case CDIN_PROTOCOL_INPUT_TEXT:
         if (cbor_field_uint(payload, payload_length, "composition_id", &composition_id) &&
-            composition_id == 0u) return 0;
+            (composition_id == 0u ||
+             !cbor_field_text_value(payload, payload_length, "text",
+                                    &committed_ime_text, &committed_ime_text_length) ||
+             committed_ime_text_length == 0u)) return 0;
         break;
     case CDIN_PROTOCOL_IME_COMPOSITION_START:
         if (!cbor_field_uint(payload, payload_length, "id", &composition_id) ||
