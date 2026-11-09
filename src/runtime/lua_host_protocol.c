@@ -1901,7 +1901,11 @@ static int dispatch_ime_composition_commit(
     }
     text = (char *)malloc(message->payload_length + 1u);
     if (text == NULL) {
-        /* Do not consume the composition; a retransmitted commit may retry. */
+        /* The inbound event will be consumed after dispatch. Since the server
+         * has already admitted this exact composition ID, retaining the state
+         * would deadlock it: cancel fail-closed rather than pretend a retry is
+         * still possible. A new composition can start with the next ID. */
+        (void)cancel_host_ime(host, client, "session_reset");
         queue_protocol_error(host, client, "NO_MEMORY", "Could not allocate committed IME text");
         return 1;
     }
