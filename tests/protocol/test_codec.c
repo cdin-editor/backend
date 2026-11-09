@@ -418,7 +418,7 @@ static void test_pane_splitter_protocol(void)
         0x6au, 'r','e','q','u','e','s','t','_','i','d', 0x01u,
         0x6fu, 'l','a','y','o','u','t','_','r','e','v','i','s','i','o','n', 0x07u
     };
-    static const uint8_t invalid_result_status[] = {
+    static const uint8_t busy_result_status[] = {
         0xa3u,
         0x66u, 's','t','a','t','u','s', 0x64u, 'b','u','s','y',
         0x6au, 'r','e','q','u','e','s','t','_','i','d', 0x01u,
@@ -453,7 +453,7 @@ static void test_pane_splitter_protocol(void)
                                           result_payload, sizeof(result_payload)) == CDIN_PROTOCOL_OK);
 
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESULT,
-                                          invalid_result_status, sizeof(invalid_result_status)) == CDIN_PROTOCOL_INVALID_SCHEMA);
+                                          busy_result_status, sizeof(busy_result_status)) == CDIN_PROTOCOL_OK);
 
     /* Spec vector: minimum-and-maximum-ratios. */
     memcpy(ratio_payload, resize_payload, sizeof(ratio_payload));
@@ -470,7 +470,7 @@ static void test_pane_splitter_protocol(void)
     assert(set_ratio_bp(ratio_payload, sizeof(ratio_payload), 999u));
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,
                                           ratio_payload, sizeof(ratio_payload)) == CDIN_PROTOCOL_OK);
-    /* Spec vector: ratio-above-maximum-rejected. */
+    /* Spec vector: ratio-above-maximum-rejected; Backend responds invalid_ratio. */
     memcpy(ratio_payload, resize_payload, sizeof(ratio_payload));
     assert(set_ratio_bp(ratio_payload, sizeof(ratio_payload), 9000u));
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_PANE_SPLITTER_RESIZE,

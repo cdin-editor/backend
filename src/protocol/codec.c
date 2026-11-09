@@ -797,6 +797,7 @@ static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
     uint64_t maximum_major;
     uint64_t maximum_minor;
     uint64_t role_epoch;
+    uint64_t ratio_bp;
     uint64_t request_id;
     switch (type) {
     case CDIN_PROTOCOL_HELLO:
@@ -817,11 +818,11 @@ static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
             request_id == 0u ||
             !cbor_field_text_nonempty(payload, payload_length, "split_id", 128u) ||
             !cbor_field_uint(payload, payload_length, "layout_revision", &role_epoch) ||
-            !cbor_field_uint(payload, payload_length, "ratio_bp", &role_epoch)) return 0;
+            !cbor_field_uint(payload, payload_length, "ratio_bp", &ratio_bp)) return 0;
         break;
     case CDIN_PROTOCOL_PANE_SPLITTER_RESULT: {
         static const char *const result_statuses[] = {
-            "applied", "stale_revision", "not_found", "invalid_ratio", "not_driver", "unsupported"
+            "applied", "stale_revision", "not_found", "invalid_ratio", "not_driver", "unsupported", "busy"
         };
         if (!cbor_field_uint(payload, payload_length, "request_id", &request_id) ||
             request_id == 0u ||
