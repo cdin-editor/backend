@@ -525,6 +525,11 @@ static void test_ime_composition_protocol(void)
         0x62u, 'i','d', 0x05u,
         0x66u, 'r','e','a','s','o','n', 0x6au, 'f','o','c','u','s','_','l','o','s','t'
     };
+    static const uint8_t committed_empty_ime[] = {
+        0xa2u,
+        0x64u, 't','e','x','t', 0x60u,
+        0x6eu, 'c','o','m','p','o','s','i','t','i','o','n','_','i','d', 0x18u, 0x29u
+    };
     static const uint8_t committed_text[] = {
         0xa2u,
         0x64u, 't','e','x','t', 0x66u, 'c','o','m','m','i','t',
@@ -561,6 +566,8 @@ static void test_ime_composition_protocol(void)
         cancel_payload, sizeof(cancel_payload)) == CDIN_PROTOCOL_OK);
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_INPUT_TEXT,
         committed_text, sizeof(committed_text)) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_INPUT_TEXT,
+        committed_empty_ime, sizeof(committed_empty_ime)) == CDIN_PROTOCOL_INVALID_SCHEMA);
 
     assert(cdin_protocol_encode_frame(&input, frame, sizeof(frame), &frame_length,
         CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_OK);
