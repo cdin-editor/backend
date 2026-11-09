@@ -496,6 +496,122 @@ static void test_pane_splitter_protocol(void)
                                       CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_UNSUPPORTED);
 }
 
+static void test_ime_composition_protocol(void)
+{
+    static const uint8_t start_payload[] = {
+        0xa3u,
+        0x62u, 'i','d', 0x05u,
+        0x67u, 'v','i','e','w','_','i','d', 0x66u, 'v','i','e','w','-','1',
+        0x70u, 'd','o','c','u','m','e','n','t','_','v','e','r','s','i','o','n', 0x07u
+    };
+    static const uint8_t update_payload[] = {
+        0xa5u,
+        0x62u, 'i','d', 0x05u,
+        0x67u, 'p','r','e','e','d','i','t', 0x62u, 0xc3u, 0xa9u,
+        0x6bu, 'c','u','r','s','o','r','_','b','y','t','e', 0x02u,
+        0x72u, 's','e','l','e','c','t','i','o','n','_','e','n','d','_','b','y','t','e', 0x02u,
+        0x74u, 's','e','l','e','c','t','i','o','n','_','s','t','a','r','t','_','b','y','t','e', 0x00u
+    };
+    static const uint8_t bad_update_offset[] = {
+        0xa5u,
+        0x62u, 'i','d', 0x05u,
+        0x67u, 'p','r','e','e','d','i','t', 0x62u, 0xc3u, 0xa9u,
+        0x6bu, 'c','u','r','s','o','r','_','b','y','t','e', 0x01u,
+        0x72u, 's','e','l','e','c','t','i','o','n','_','e','n','d','_','b','y','t','e', 0x02u,
+        0x74u, 's','e','l','e','c','t','i','o','n','_','s','t','a','r','t','_','b','y','t','e', 0x00u
+    };
+    static const uint8_t cancel_payload[] = {
+        0xa2u,
+        0x62u, 'i','d', 0x05u,
+        0x66u, 'r','e','a','s','o','n', 0x6au, 'f','o','c','u','s','_','l','o','s','t'
+    };
+    static const uint8_t committed_text[] = {
+        0xa2u,
+        0x64u, 't','e','x','t', 0x66u, 'c','o','m','m','i','t',
+        0x6eu, 'c','o','m','p','o','s','i','t','i','o','n','_','i','d', 0x05u
+    };
+    uint8_t frame[512];
+    size_t frame_length = 0u;
+    cdin_protocol_message_view input = {
+        CDIN_PROTOCOL_VERSION_MAJOR, CDIN_PROTOCOL_VERSION_MINOR, 10u,
+        CDIN_PROTOCOL_IME_COMPOSITION_START, "ime", start_payload, sizeof(start_payload)
+    };
+    cdin_protocol_message_view decoded;
+
+    assert(strcmp(cdin_protocol_message_name(CDIN_PROTOCOL_IME_COMPOSITION_START),
+                  "ime.composition.start") == 0);
+    assert(strcmp(cdin_protocol_message_name(CDIN_PROTOCOL_IME_COMPOSITION_UPDATE),
+                  "ime.composition.update") == 0);
+    assert(strcmp(cdin_protocol_message_name(CDIN_PROTOCOL_IME_COMPOSITION_CANCEL),
+                  "ime.composition.cancel") == 0);
+    assert(cdin_protocol_message_is_inbound(CDIN_PROTOCOL_IME_COMPOSITION_START));
+    assert(cdin_protocol_message_is_inbound(CDIN_PROTOCOL_IME_COMPOSITION_UPDATE));
+    assert(cdin_protocol_message_is_inbound(CDIN_PROTOCOL_IME_COMPOSITION_CANCEL));
+    assert(cdin_protocol_message_requires_driver(CDIN_PROTOCOL_IME_COMPOSITION_START));
+    assert(cdin_protocol_message_requires_driver(CDIN_PROTOCOL_IME_COMPOSITION_UPDATE));
+    assert(cdin_protocol_message_requires_driver(CDIN_PROTOCOL_IME_COMPOSITION_CANCEL));
+
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_IME_COMPOSITION_START,
+        start_payload, sizeof(start_payload)) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_IME_COMPOSITION_UPDATE,
+        update_payload, sizeof(update_payload)) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_IME_COMPOSITION_UPDATE,
+        bad_update_offset, sizeof(bad_update_offset)) == CDIN_PROTOCOL_INVALID_SCHEMA);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_IME_COMPOSITION_CANCEL,
+        cancel_payload, sizeof(cancel_payload)) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_INPUT_TEXT,
+        committed_text, sizeof(committed_text)) == CDIN_PROTOCOL_OK);
+
+    assert(cdin_protocol_encode_frame(&input, frame, sizeof(frame), &frame_length,
+        CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_decode_frame(frame, frame_length, &decoded,
+        CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_OK);
+    assert(decoded.type == CDIN_PROTOCOL_IME_COMPOSITION_START);
+    assert(strcmp(decoded.name_space, "ime") == 0);
+    assert(memcmp(decoded.payload, start_payload, sizeof(start_payload)) == 0);
+
+    input.type = CDIN_PROTOCOL_IME_COMPOSITION_UPDATE;
+    input.sequence = 11u;
+    input.payload = update_payload;
+    input.payload_length = sizeof(update_payload);
+    assert(cdin_protocol_encode_frame(&input, frame, sizeof(frame), &frame_length,
+        CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_decode_frame(frame, frame_length, &decoded,
+        CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_OK);
+    assert(decoded.type == CDIN_PROTOCOL_IME_COMPOSITION_UPDATE);
+    assert(strcmp(decoded.name_space, "ime") == 0);
+
+    input.type = CDIN_PROTOCOL_IME_COMPOSITION_CANCEL;
+    input.sequence = 12u;
+    input.payload = cancel_payload;
+    input.payload_length = sizeof(cancel_payload);
+    assert(cdin_protocol_encode_frame(&input, frame, sizeof(frame), &frame_length,
+        CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_decode_frame(frame, frame_length, &decoded,
+        CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_OK);
+    assert(decoded.type == CDIN_PROTOCOL_IME_COMPOSITION_CANCEL);
+    assert(strcmp(decoded.name_space, "ime") == 0);
+
+    input.type = CDIN_PROTOCOL_INPUT_TEXT;
+    input.sequence = 13u;
+    input.name_space = "core";
+    input.payload = committed_text;
+    input.payload_length = sizeof(committed_text);
+    assert(cdin_protocol_encode_frame(&input, frame, sizeof(frame), &frame_length,
+        CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_decode_frame(frame, frame_length, &decoded,
+        CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_OK);
+    assert(decoded.type == CDIN_PROTOCOL_INPUT_TEXT);
+    assert(strcmp(decoded.name_space, "core") == 0);
+
+    input.type = CDIN_PROTOCOL_IME_COMPOSITION_START;
+    input.name_space = "core";
+    input.payload = start_payload;
+    input.payload_length = sizeof(start_payload);
+    assert(cdin_protocol_encode_frame(&input, frame, sizeof(frame), &frame_length,
+        CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_UNSUPPORTED);
+}
+
 static void test_direction_and_roles(void)
 {
     static const uint8_t role_changed[] = {
@@ -528,6 +644,7 @@ int main(void)
     test_frame_bounds();
     test_direction_and_roles();
     test_pane_splitter_protocol();
-    puts("PASS protocol codec: CBOR envelope, binary paste, strict schema constraints, partial stream I/O and bounds");
+    test_ime_composition_protocol();
+    puts("PASS protocol codec: CBOR envelope, binary paste, strict schema constraints, IME/PaneTree extensions, partial stream I/O and bounds");
     return 0;
 }
