@@ -756,17 +756,17 @@ static void test_ime_connection_state_machine(void)
     /* A full outbound queue defers cancellation but locks the composition
      * against further commits until the same cancel can be retried. */
     {
-        static const uint8_t layout_payload[] = {
-            0xa2u, 0x66u, 'l','a','y','o','u','t', 0xa2u,
-            0x64u, 'r','o','o','t', 0xf6u,
-            0x6bu, 'a','c','t','i','v','e','_','l','e','a','f', 0xf6u,
-            0x68u, 'r','e','v','i','s','i','o','n', 0x01u
+        static const uint8_t error_payload[] = {
+            0xa2u,
+            0x64u, 'c','o','d','e', 0x63u, 'B','U','S',
+            0x67u, 'm','e','s','s','a','g','e', 0x64u, 'f','u','l','l'
         };
         cdin_protocol_server *small_server = NULL;
         cdin_protocol_client *small_driver = NULL;
         cdin_protocol_message outbound;
+        uint64_t flush_sequence = 0u;
         assert(cdin_protocol_server_create(
-            1u, 1u, 2u, 0x88776655u, CDIN_PROTOCOL_CAP_IME_COMPOSITION,
+            1u, 2u, 2u, 0x88776655u, CDIN_PROTOCOL_CAP_IME_COMPOSITION,
             1024u, NULL, NULL, &small_server) == CDIN_BACKEND_OK);
         small_driver = new_attached_with_capabilities(
             small_server, "ime-cancel-retry", CDIN_PROTOCOL_CAP_IME_COMPOSITION, NULL);
@@ -774,17 +774,19 @@ static void test_ime_connection_state_machine(void)
             "ime", start_41, sizeof(start_41), 1u, CDIN_BACKEND_OK);
         assert(cdin_protocol_consume_event(small_driver) == CDIN_BACKEND_OK);
         memset(&outbound, 0, sizeof(outbound));
-        outbound.type = CDIN_PROTOCOL_UI_LAYOUT;
-        outbound.payload = layout_payload;
-        outbound.payload_length = sizeof(layout_payload);
-        assert(cdin_protocol_enqueue(small_driver, &outbound) == CDIN_BACKEND_OK);
+        outbound.type = CDIN_PROTOCOL_ERROR;
+        outbound.payload = error_payload;
+        outbound.payload_length = sizeof(error_payload);
+        assert(cdin_protocol_publish_batch(
+            small_driver, &outbound, 1u, &flush_sequence) == CDIN_BACKEND_OK);
+        assert(cdin_protocol_pending_messages(small_driver) == 2u);
         assert(cdin_protocol_client_ime_cancel(
             small_driver, 41u, "focus_lost") == CDIN_BACKEND_QUEUE_FULL);
         assert(cdin_protocol_client_has_active_ime(small_driver));
         receive_ime_message(small_driver, CDIN_PROTOCOL_INPUT_TEXT,
             "core", text_with_id_41, sizeof(text_with_id_41), 2u,
             CDIN_BACKEND_INVALID_STATE);
-        assert(cdin_protocol_consume_control_message(small_driver) == CDIN_BACKEND_OK);
+        assert(cdin_protocol_ack(small_driver, flush_sequence) == CDIN_BACKEND_OK);
         assert(cdin_protocol_client_ime_cancel(
             small_driver, 41u, "focus_lost") == CDIN_BACKEND_OK);
         assert(!cdin_protocol_client_has_active_ime(small_driver));
