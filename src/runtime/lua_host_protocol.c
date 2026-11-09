@@ -1913,7 +1913,7 @@ static int dispatch_ime_composition_commit(
                                        "text", text, message->payload_length + 1u,
                                        &text_length) != CDIN_PROTOCOL_OK || text_length == 0u) {
         free(text);
-        (void)cancel_host_ime(host, client, "ime_cancelled");
+        (void)cancel_host_ime(host, client, "session_reset");
         return 1;
     }
 
