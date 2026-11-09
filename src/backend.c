@@ -238,6 +238,10 @@ cdin_backend_status cdin_backend_start(cdin_backend *backend)
                 cdin_lua_host_supports_pane_splitter(backend->runtime)) {
                 supported_capabilities |= CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE;
             }
+            if (backend->runtime != NULL &&
+                cdin_lua_host_supports_ime_composition(backend->runtime)) {
+                supported_capabilities |= CDIN_PROTOCOL_CAP_IME_COMPOSITION;
+            }
             status = cdin_protocol_server_create(backend->config.max_frontends,
                                                  backend->config.outgoing_queue_capacity,
                                                  backend->config.max_pending_completions,

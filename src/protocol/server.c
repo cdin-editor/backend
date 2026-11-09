@@ -59,6 +59,12 @@ struct cdin_protocol_client {
     int closed;
     int driver;
     int role_event_pending;
+    uint64_t ime_last_id;
+    uint64_t ime_active_id;
+    int ime_active;
+    int ime_commit_pending;
+    int ime_cancel_pending;
+    char ime_cancel_reason[32];
 };
 
 static void cdin_protocol_log(cdin_protocol_server *server, int level, const char *event,
@@ -262,6 +268,12 @@ cdin_backend_status cdin_protocol_detach(cdin_protocol_client *client)
     server = client->server;
     client->attached = 0;
     client->driver = 0;
+    /* IME context is scoped to this exact attachment and is never resumed. */
+    client->ime_active = 0;
+    client->ime_active_id = 0u;
+    client->ime_commit_pending = 0;
+    client->ime_cancel_pending = 0;
+    client->ime_cancel_reason[0] = '\0';
     /* A detached frontend must not replay stale output after it reattaches. */
     while (client->queue_count > 0u) cdin_protocol_remove_item(client, client->queue_count - 1u);
     client->pending_flushes = 0u;
@@ -349,11 +361,16 @@ static cdin_backend_status protocol_enqueue(cdin_protocol_client *client,
             return CDIN_BACKEND_UNSUPPORTED;
         if (client->role_event_pending) return CDIN_BACKEND_BUSY;
     }
+    if (message->type == CDIN_PROTOCOL_IME_COMPOSITION_CANCEL &&
+        !cdin_protocol_client_has_capability(client, CDIN_PROTOCOL_CAP_IME_COMPOSITION)) {
+        return CDIN_BACKEND_UNSUPPORTED;
+    }
     handshake_reply = (message->type == CDIN_PROTOCOL_HELLO_ACK ||
                        message->type == CDIN_PROTOCOL_DETACH_ACK);
     if (!cdin_protocol_client_is_attached(client) &&
         !(handshake_reply && client->greeted)) return CDIN_BACKEND_INVALID_STATE;
-    if (cdin_protocol_message_is_inbound((cdin_protocol_message_type)message->type) ||
+    if ((cdin_protocol_message_is_inbound((cdin_protocol_message_type)message->type) &&
+         message->type != CDIN_PROTOCOL_IME_COMPOSITION_CANCEL) ||
         cdin_protocol_message_name((cdin_protocol_message_type)message->type) == NULL) {
         cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "outbound_direction_rejected",
                           client->id, CDIN_BACKEND_INVALID_ARGUMENT, (uint64_t)message->type);
@@ -773,6 +790,13 @@ cdin_backend_status cdin_protocol_receive(cdin_protocol_client *client,
 {
     cdin_protocol_queued *item;
     uint8_t *copy = NULL;
+    uint64_t ime_id = 0u;
+    uint64_t composition_id = 0u;
+    int has_composition_id = 0;
+    int is_ime_start;
+    int is_ime_update;
+    int is_ime_cancel;
+    int is_text_commit;
     if (client == NULL || message == NULL || client->closed || !client->attached) return CDIN_BACKEND_INVALID_STATE;
     if (!cdin_protocol_message_is_inbound(message->type) ||
         message->type == CDIN_PROTOCOL_HELLO || message->type == CDIN_PROTOCOL_ATTACH ||
@@ -782,6 +806,16 @@ cdin_backend_status cdin_protocol_receive(cdin_protocol_client *client,
     if (message->type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE &&
         !cdin_protocol_client_has_capability(client, CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE)) {
         cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "pane_splitter_capability_rejected",
+                          client->id, CDIN_BACKEND_UNSUPPORTED, (uint64_t)message->type);
+        return CDIN_BACKEND_UNSUPPORTED;
+    }
+    is_ime_start = message->type == CDIN_PROTOCOL_IME_COMPOSITION_START;
+    is_ime_update = message->type == CDIN_PROTOCOL_IME_COMPOSITION_UPDATE;
+    is_ime_cancel = message->type == CDIN_PROTOCOL_IME_COMPOSITION_CANCEL;
+    is_text_commit = message->type == CDIN_PROTOCOL_INPUT_TEXT;
+    if ((is_ime_start || is_ime_update || is_ime_cancel) &&
+        !cdin_protocol_client_has_capability(client, CDIN_PROTOCOL_CAP_IME_COMPOSITION)) {
+        cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "ime_capability_rejected",
                           client->id, CDIN_BACKEND_UNSUPPORTED, (uint64_t)message->type);
         return CDIN_BACKEND_UNSUPPORTED;
     }
@@ -801,6 +835,43 @@ cdin_backend_status cdin_protocol_receive(cdin_protocol_client *client,
                           client->id, CDIN_BACKEND_INVALID_ARGUMENT, (uint64_t)message->type);
         return CDIN_BACKEND_INVALID_ARGUMENT;
     }
+    if (is_ime_start || is_ime_update || is_ime_cancel) {
+        if (cdin_protocol_payload_get_uint(message->payload, message->payload_length,
+                                            "id", &ime_id) != CDIN_PROTOCOL_OK || ime_id == 0u)
+            return CDIN_BACKEND_INVALID_ARGUMENT;
+    }
+    if (is_ime_start) {
+        if (client->ime_active) return CDIN_BACKEND_BUSY;
+        if (ime_id <= client->ime_last_id) {
+            cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "ime_reused_composition_id",
+                              client->id, CDIN_BACKEND_INVALID_STATE, ime_id);
+            return CDIN_BACKEND_INVALID_STATE;
+        }
+    } else if (is_ime_update || is_ime_cancel) {
+        if (!client->ime_active || client->ime_active_id != ime_id ||
+            client->ime_cancel_pending || client->ime_commit_pending) {
+            return CDIN_BACKEND_INVALID_STATE;
+        }
+    }
+    if (is_ime_update) {
+        /* Validated preedit is deliberately discarded; it never enters the
+         * Runtime queue or a shared UI snapshot. */
+        return CDIN_BACKEND_OK;
+    }
+    if (is_text_commit) {
+        cdin_protocol_status composition_status =
+            cdin_protocol_payload_get_uint(message->payload, message->payload_length,
+                                           "composition_id", &composition_id);
+        has_composition_id = composition_status == CDIN_PROTOCOL_OK;
+        if (client->ime_active) {
+            if (!has_composition_id || composition_id != client->ime_active_id ||
+                client->ime_commit_pending || client->ime_cancel_pending) {
+                return CDIN_BACKEND_INVALID_STATE;
+            }
+        } else if (has_composition_id) {
+            return CDIN_BACKEND_INVALID_STATE;
+        }
+    }
     if (client->inbound_count == client->inbound_capacity) {
         cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "input_queue_full",
                           client->id, CDIN_BACKEND_QUEUE_FULL, (uint64_t)client->inbound_count);
@@ -818,6 +889,22 @@ cdin_backend_status cdin_protocol_receive(cdin_protocol_client *client,
     item->flush_sequence = message->sequence;
     item->payload = copy;
     item->payload_length = message->payload_length;
+    if (is_ime_start) {
+        client->ime_last_id = ime_id;
+        client->ime_active_id = ime_id;
+        client->ime_active = 1;
+        client->ime_commit_pending = 0;
+        client->ime_cancel_pending = 0;
+        client->ime_cancel_reason[0] = '\0';
+    } else if (is_ime_cancel) {
+        client->ime_active = 0;
+        client->ime_active_id = 0u;
+        client->ime_commit_pending = 0;
+        client->ime_cancel_pending = 0;
+        client->ime_cancel_reason[0] = '\0';
+    } else if (is_text_commit && has_composition_id) {
+        client->ime_commit_pending = 1;
+    }
     cdin_protocol_log(client->server, CDIN_BACKEND_LOG_TRACE, "input_queued",
                       client->id, CDIN_BACKEND_OK, message->sequence);
     return CDIN_BACKEND_OK;
@@ -890,6 +977,78 @@ uint64_t cdin_protocol_client_snapshot_revision(const cdin_protocol_client *clie
 uint64_t cdin_protocol_client_session_id(const cdin_protocol_client *client)
 { return client == NULL || client->closed ? 0u : client->server->session_id; }
 
+
+int cdin_protocol_client_has_active_ime(const cdin_protocol_client *client)
+{
+    return client != NULL && !client->closed && client->attached && client->ime_active;
+}
+
+uint64_t cdin_protocol_client_ime_id(const cdin_protocol_client *client)
+{
+    return cdin_protocol_client_has_active_ime(client) ? client->ime_active_id : 0u;
+}
+
+int cdin_protocol_client_ime_commit_pending(const cdin_protocol_client *client)
+{
+    return cdin_protocol_client_has_active_ime(client) && client->ime_commit_pending;
+}
+
+cdin_backend_status cdin_protocol_client_ime_commit_complete(
+    cdin_protocol_client *client, uint64_t composition_id)
+{
+    if (!cdin_protocol_client_has_active_ime(client) || composition_id == 0u ||
+        client->ime_active_id != composition_id || !client->ime_commit_pending)
+        return CDIN_BACKEND_INVALID_STATE;
+    client->ime_active = 0;
+    client->ime_active_id = 0u;
+    client->ime_commit_pending = 0;
+    client->ime_cancel_pending = 0;
+    client->ime_cancel_reason[0] = '\0';
+    return CDIN_BACKEND_OK;
+}
+
+cdin_backend_status cdin_protocol_client_ime_cancel(
+    cdin_protocol_client *client, uint64_t composition_id, const char *reason)
+{
+    uint8_t payload[96];
+    size_t offset = 0u;
+    size_t reason_length;
+    cdin_protocol_message message;
+    cdin_backend_status status;
+    if (!cdin_protocol_client_has_active_ime(client) || composition_id == 0u ||
+        client->ime_active_id != composition_id || reason == NULL)
+        return CDIN_BACKEND_INVALID_STATE;
+    reason_length = strlen(reason);
+    if (reason_length == 0u || reason_length >= sizeof(client->ime_cancel_reason))
+        return CDIN_BACKEND_INVALID_ARGUMENT;
+    if (client->ime_cancel_pending && strcmp(client->ime_cancel_reason, reason) != 0)
+        return CDIN_BACKEND_INVALID_STATE;
+
+    payload[offset++] = 0xa2u;
+    offset += write_cbor_text(payload + offset, "id", 2u);
+    offset += write_cbor_uint(payload + offset, composition_id);
+    offset += write_cbor_text(payload + offset, "reason", 6u);
+    offset += write_cbor_text(payload + offset, reason, reason_length);
+    memset(&message, 0, sizeof(message));
+    message.type = CDIN_PROTOCOL_IME_COMPOSITION_CANCEL;
+    message.payload = payload;
+    message.payload_length = offset;
+
+    client->ime_cancel_pending = 1;
+    memcpy(client->ime_cancel_reason, reason, reason_length + 1u);
+    status = protocol_enqueue(client, &message, 1);
+    if (status == CDIN_BACKEND_OK) {
+        client->ime_active = 0;
+        client->ime_active_id = 0u;
+        client->ime_commit_pending = 0;
+        client->ime_cancel_pending = 0;
+        client->ime_cancel_reason[0] = '\0';
+    } else {
+        cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "ime_cancel_deferred",
+                          client->id, status, composition_id);
+    }
+    return status;
+}
 
 void *cdin_protocol_client_server_context(const cdin_protocol_client *client)
 {
