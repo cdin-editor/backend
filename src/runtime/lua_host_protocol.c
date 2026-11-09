@@ -1546,7 +1546,7 @@ static int dispatch_pane_splitter_resize(cdin_lua_host *host, cdin_protocol_clie
     }
     if (previous->active && previous->pending_publish) {
         (void)latest_ui_revision(host, &current_revision);
-        queue_protocol_error(host, client, "BUSY", "a prior splitter result is awaiting atomic publication");
+        (void)publish_pane_result_only(host, client, request_id, "busy", current_revision);
         lua_settop(L, base);
         return 1;
     }
@@ -1624,6 +1624,28 @@ static int dispatch_pane_splitter_resize(cdin_lua_host *host, cdin_protocol_clie
     return 1;
 }
 
+/* A failed atomic publication must not leave the global splitter gate owned
+ * by a frontend that has since detached or closed. The pending snapshot is
+ * client-scoped, so discard it once its owner is no longer attached. */
+static void clear_detached_pane_pending(cdin_lua_host *host)
+{
+    size_t index;
+    size_t count;
+    if (host == NULL || !host->pane_result.active || !host->pane_result.pending_publish) return;
+    if (host->backend == NULL || host->backend->protocol == NULL) {
+        memset(&host->pane_result, 0, sizeof(host->pane_result));
+        return;
+    }
+    count = (size_t)host->backend->config.max_frontends;
+    for (index = 0u; index < count; index++) {
+        cdin_protocol_client *client =
+            cdin_protocol_server_client_at(host->backend->protocol, index);
+        if (client != NULL && cdin_protocol_client_is_attached(client) &&
+            cdin_protocol_client_id(client) == host->pane_result.client_id) return;
+    }
+    memset(&host->pane_result, 0, sizeof(host->pane_result));
+}
+
 static int dispatch_frontend_event(cdin_lua_host *host, cdin_protocol_client *client,
                                    const cdin_protocol_message *message)
 {
@@ -1632,16 +1654,18 @@ static int dispatch_frontend_event(cdin_lua_host *host, cdin_protocol_client *cl
     int event_index;
     int runtime_index;
     const char *type_name = cdin_protocol_message_name((cdin_protocol_message_type)message->type);
+    /* Pane requests are decoded with the protocol's uint64 readers below.
+     * Do not route them through the signed lua_Integer decoder: request IDs
+     * are full-width uint64 values and may exceed LUA_MAXINTEGER. */
+    if (message->type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE) {
+        return dispatch_pane_splitter_resize(host, client, message);
+    }
     if (type_name == NULL || !decode_event_payload(L, message->payload, message->payload_length)) {
         lua_settop(L, base);
         queue_protocol_error(host, client, "INVALID_SCHEMA", "Frontend payload could not be decoded");
         return 1;
     }
     event_index = lua_absindex(L, -1);
-    if (message->type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE) {
-        lua_settop(L, base);
-        return dispatch_pane_splitter_resize(host, client, message);
-    }
     lua_pushstring(L, type_name); lua_setfield(L, event_index, "type");
     lua_pushinteger(L, (lua_Integer)message->sequence); lua_setfield(L, event_index, "sequence");
     lua_pushinteger(L, (lua_Integer)cdin_protocol_client_id(client)); lua_setfield(L, event_index, "client_id");
@@ -1684,6 +1708,7 @@ cdin_backend_status cdin_lua_host_dispatch_frontend(cdin_lua_host *host, size_t 
         return CDIN_BACKEND_INVALID_ARGUMENT;
     if (!cdin_backend_is_owner(host->backend)) return CDIN_BACKEND_INVALID_STATE;
     *out_processed = 0u;
+    clear_detached_pane_pending(host);
     if (host->backend->protocol == NULL) return CDIN_BACKEND_OK;
     count = (size_t)host->backend->config.max_frontends;
     if (count == 0u) return CDIN_BACKEND_OK;

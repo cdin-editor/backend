@@ -557,10 +557,13 @@ static void test_pane_splitter_capability_driver_and_request_ids(void)
     assert(cdin_protocol_receive(driver, &request) == CDIN_BACKEND_OK);
     assert(cdin_protocol_pending_events(driver) == 3u);
 
+    /* Request IDs are not required to be monotonic. A still-outstanding
+     * immutable request can be retried after a newer request was observed. */
     request.payload = request_one;
     request.payload_length = sizeof(request_one);
     request.sequence = 4u;
-    assert(cdin_protocol_receive(driver, &request) == CDIN_BACKEND_INVALID_ARGUMENT);
+    assert(cdin_protocol_receive(driver, &request) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_pending_events(driver) == 4u);
 
     request.sequence = 1u;
     /* Spec vector: observer-cannot-resize. */
