@@ -1646,6 +1646,367 @@ static void clear_detached_pane_pending(cdin_lua_host *host)
     memset(&host->pane_result, 0, sizeof(host->pane_result));
 }
 
+
+static cdin_protocol_client *find_ime_client(cdin_lua_host *host, uint64_t client_id)
+{
+    size_t index;
+    size_t count;
+    if (host == NULL || host->backend == NULL || host->backend->protocol == NULL ||
+        client_id == 0u) return NULL;
+    count = (size_t)host->backend->config.max_frontends;
+    for (index = 0u; index < count; index++) {
+        cdin_protocol_client *client =
+            cdin_protocol_server_client_at(host->backend->protocol, index);
+        if (client != NULL && cdin_protocol_client_id(client) == client_id) return client;
+    }
+    return NULL;
+}
+
+static void clear_host_ime(cdin_lua_host *host)
+{
+    if (host != NULL) memset(&host->ime_composition, 0, sizeof(host->ime_composition));
+}
+
+static void push_ime_context(lua_State *L, const cdin_ime_composition_state *state)
+{
+    lua_createtable(L, 0, 4);
+    lua_pushstring(L, state->view_id);
+    lua_setfield(L, -2, "view_id");
+    lua_pushinteger(L, (lua_Integer)state->document_version);
+    lua_setfield(L, -2, "document_version");
+    lua_pushinteger(L, (lua_Integer)state->anchor);
+    lua_setfield(L, -2, "anchor");
+    lua_pushinteger(L, (lua_Integer)state->caret);
+    lua_setfield(L, -2, "caret");
+}
+
+static const char *ime_cancel_reason_from_lua_error(lua_State *L, int error_index)
+{
+    const char *code = NULL;
+    const char *message = NULL;
+    error_index = lua_absindex(L, error_index);
+    if (lua_istable(L, error_index)) {
+        lua_getfield(L, error_index, "code");
+        if (lua_type(L, -1) == LUA_TSTRING) code = lua_tostring(L, -1);
+        if (code != NULL && strcmp(code, "STALE_VERSION") == 0) {
+            lua_pop(L, 1);
+            return "stale_document";
+        }
+        lua_pop(L, 1);
+        lua_getfield(L, error_index, "message");
+        if (lua_type(L, -1) == LUA_TSTRING) message = lua_tostring(L, -1);
+        if (message != NULL) {
+            if (strstr(message, "removed") != NULL) {
+                lua_pop(L, 1);
+                return "view_removed";
+            }
+            if (strstr(message, "selection") != NULL) {
+                lua_pop(L, 1);
+                return "selection_changed";
+            }
+            if (strstr(message, "focus") != NULL || strstr(message, "visible") != NULL) {
+                lua_pop(L, 1);
+                return "focus_lost";
+            }
+            if (strstr(message, "document") != NULL || strstr(message, "version") != NULL) {
+                lua_pop(L, 1);
+                return "stale_document";
+            }
+        }
+        lua_pop(L, 1);
+    }
+    return "session_reset";
+}
+
+static cdin_backend_status cancel_host_ime(
+    cdin_lua_host *host, cdin_protocol_client *client, const char *reason)
+{
+    cdin_backend_status status;
+    cdin_ime_composition_state *state;
+    if (host == NULL || !host->ime_composition.active) return CDIN_BACKEND_OK;
+    state = &host->ime_composition;
+    if (client == NULL) client = find_ime_client(host, state->client_id);
+    if (client == NULL || !cdin_protocol_client_is_attached(client)) {
+        clear_host_ime(host);
+        return CDIN_BACKEND_OK;
+    }
+    if (state->cancel_pending) reason = state->cancel_reason;
+    if (reason == NULL || reason[0] == '\0') reason = "session_reset";
+    (void)snprintf(state->cancel_reason, sizeof(state->cancel_reason), "%s", reason);
+    state->cancel_pending = 1;
+    status = cdin_protocol_client_ime_cancel(client, state->composition_id, reason);
+    if (status == CDIN_BACKEND_OK || status == CDIN_BACKEND_INVALID_STATE) {
+        clear_host_ime(host);
+    } else if (status != CDIN_BACKEND_QUEUE_FULL) {
+        CDIN_BACKEND_WARN(host->backend->kernel, "PROTOCOL",
+            "IME cancellation deferred client_id=%llu composition_id=%llu reason=%s status=%s",
+            (unsigned long long)state->client_id,
+            (unsigned long long)state->composition_id, reason,
+            cdin_backend_status_name(status));
+    }
+    return status;
+}
+
+static int dispatch_ime_composition_start(
+    cdin_lua_host *host,
+    cdin_protocol_client *client,
+    const cdin_protocol_message *message)
+{
+    lua_State *L = host->state;
+    int base = lua_gettop(L);
+    int runtime_index;
+    uint64_t composition_id = 0u;
+    uint64_t document_version = 0u;
+    char view_id[129];
+    size_t view_id_length = 0u;
+    cdin_protocol_status decoded;
+    cdin_ime_composition_state *state = &host->ime_composition;
+
+    decoded = cdin_protocol_payload_get_uint(message->payload, message->payload_length,
+                                             "id", &composition_id);
+    if (decoded != CDIN_PROTOCOL_OK || composition_id == 0u) return 1;
+    decoded = cdin_protocol_payload_get_uint(message->payload, message->payload_length,
+                                             "document_version", &document_version);
+    if (decoded != CDIN_PROTOCOL_OK || document_version > (uint64_t)LUA_MAXINTEGER) {
+        (void)cdin_protocol_client_ime_cancel(client, composition_id, "stale_document");
+        return 1;
+    }
+    decoded = cdin_protocol_payload_get_text(message->payload, message->payload_length,
+                                             "view_id", view_id, sizeof(view_id), &view_id_length);
+    if (decoded != CDIN_PROTOCOL_OK || view_id_length == 0u || view_id_length > 128u) {
+        (void)cdin_protocol_client_ime_cancel(client, composition_id, "view_changed");
+        return 1;
+    }
+    if (!cdin_protocol_client_has_capability(client, CDIN_PROTOCOL_CAP_IME_COMPOSITION) ||
+        !cdin_protocol_can_mutate(client)) {
+        (void)cdin_protocol_client_ime_cancel(client, composition_id, "driver_revoked");
+        return 1;
+    }
+    if (state->active) {
+        if (state->client_id != cdin_protocol_client_id(client)) {
+            (void)cancel_host_ime(host, NULL, "session_reset");
+        }
+        if (state->active) {
+            (void)cdin_protocol_client_ime_cancel(client, composition_id, "session_reset");
+            return 1;
+        }
+    }
+
+    clear_host_ime(host);
+    state = &host->ime_composition;
+    state->active = 1;
+    state->client_id = cdin_protocol_client_id(client);
+    state->composition_id = composition_id;
+    state->document_version = document_version;
+    memcpy(state->view_id, view_id, view_id_length);
+    state->view_id[view_id_length] = '\0';
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, host->runtime_ref);
+    runtime_index = lua_absindex(L, -1);
+    lua_getfield(L, runtime_index, "begin_ime_composition");
+    if (!lua_isfunction(L, -1)) {
+        lua_settop(L, base);
+        (void)cancel_host_ime(host, client, "session_reset");
+        return 1;
+    }
+    lua_pushvalue(L, runtime_index);
+    lua_createtable(L, 0, 2);
+    lua_pushstring(L, view_id);
+    lua_setfield(L, -2, "view_id");
+    lua_pushinteger(L, (lua_Integer)document_version);
+    lua_setfield(L, -2, "document_version");
+    if (lua_pcall(L, 2, 1, 0) != LUA_OK) {
+        const char *reason = ime_cancel_reason_from_lua_error(L, -1);
+        CDIN_BACKEND_WARN(host->backend->kernel, "PROTOCOL",
+            "Runtime rejected IME start client_id=%llu composition_id=%llu reason=%s",
+            (unsigned long long)state->client_id,
+            (unsigned long long)composition_id, reason);
+        lua_settop(L, base);
+        (void)cancel_host_ime(host, client, reason);
+        return 1;
+    }
+    {
+        uint64_t captured_version = 0u, anchor = 0u, caret = 0u;
+        const char *captured_view = NULL;
+        size_t captured_view_length = 0u;
+        int context_index = lua_absindex(L, -1);
+        if (!lua_istable(L, context_index) ||
+            !model_get_text(L, context_index, "view_id", &captured_view, &captured_view_length) ||
+            captured_view_length != view_id_length ||
+            memcmp(captured_view, view_id, view_id_length) != 0 ||
+            !model_get_uint(L, context_index, "document_version", &captured_version) ||
+            !model_get_uint(L, context_index, "anchor", &anchor) ||
+            !model_get_uint(L, context_index, "caret", &caret) ||
+            captured_version != document_version ||
+            anchor > (uint64_t)LUA_MAXINTEGER || caret > (uint64_t)LUA_MAXINTEGER) {
+            lua_settop(L, base);
+            (void)cancel_host_ime(host, client, "stale_document");
+            return 1;
+        }
+        state->document_version = captured_version;
+        state->anchor = anchor;
+        state->caret = caret;
+    }
+    lua_settop(L, base);
+    CDIN_BACKEND_INFO(host->backend->kernel, "PROTOCOL",
+        "IME composition started client_id=%llu composition_id=%llu view_id=%s version=%llu",
+        (unsigned long long)state->client_id,
+        (unsigned long long)state->composition_id, state->view_id,
+        (unsigned long long)state->document_version);
+    return 1;
+}
+
+static int dispatch_ime_composition_cancel(
+    cdin_lua_host *host, cdin_protocol_client *client,
+    const cdin_protocol_message *message)
+{
+    uint64_t composition_id = 0u;
+    if (cdin_protocol_payload_get_uint(message->payload, message->payload_length,
+                                       "id", &composition_id) != CDIN_PROTOCOL_OK) return 1;
+    if (host->ime_composition.active &&
+        host->ime_composition.client_id == cdin_protocol_client_id(client) &&
+        host->ime_composition.composition_id == composition_id) {
+        CDIN_BACKEND_INFO(host->backend->kernel, "PROTOCOL",
+            "IME composition cancelled by frontend client_id=%llu composition_id=%llu",
+            (unsigned long long)host->ime_composition.client_id,
+            (unsigned long long)composition_id);
+        clear_host_ime(host);
+    }
+    return 1;
+}
+
+static int dispatch_ime_composition_commit(
+    cdin_lua_host *host, cdin_protocol_client *client,
+    const cdin_protocol_message *message)
+{
+    lua_State *L = host->state;
+    int base = lua_gettop(L);
+    int runtime_index;
+    uint64_t composition_id = 0u;
+    char *text = NULL;
+    size_t text_length = 0u;
+    cdin_ime_composition_state *state = &host->ime_composition;
+    if (cdin_protocol_payload_get_uint(message->payload, message->payload_length,
+                                       "composition_id", &composition_id) != CDIN_PROTOCOL_OK ||
+        composition_id == 0u) return 1;
+    if (!state->active || state->client_id != cdin_protocol_client_id(client) ||
+        state->composition_id != composition_id ||
+        !cdin_protocol_client_ime_commit_pending(client)) {
+        (void)cdin_protocol_client_ime_cancel(client, composition_id, "session_reset");
+        return 1;
+    }
+    if (message->payload_length == SIZE_MAX) {
+        (void)cancel_host_ime(host, client, "session_reset");
+        return 1;
+    }
+    text = (char *)malloc(message->payload_length + 1u);
+    if (text == NULL) {
+        /* Do not consume the composition; a retransmitted commit may retry. */
+        queue_protocol_error(host, client, "NO_MEMORY", "Could not allocate committed IME text");
+        return 1;
+    }
+    if (cdin_protocol_payload_get_text(message->payload, message->payload_length,
+                                       "text", text, message->payload_length + 1u,
+                                       &text_length) != CDIN_PROTOCOL_OK || text_length == 0u) {
+        free(text);
+        (void)cancel_host_ime(host, client, "ime_cancelled");
+        return 1;
+    }
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, host->runtime_ref);
+    runtime_index = lua_absindex(L, -1);
+    lua_getfield(L, runtime_index, "commit_ime_composition");
+    if (!lua_isfunction(L, -1)) {
+        lua_settop(L, base);
+        free(text);
+        (void)cancel_host_ime(host, client, "session_reset");
+        return 1;
+    }
+    lua_pushvalue(L, runtime_index);
+    push_ime_context(L, state);
+    lua_pushlstring(L, text, text_length);
+    free(text);
+    if (lua_pcall(L, 3, 1, 0) != LUA_OK) {
+        const char *reason = ime_cancel_reason_from_lua_error(L, -1);
+        CDIN_BACKEND_WARN(host->backend->kernel, "PROTOCOL",
+            "Runtime rejected IME commit client_id=%llu composition_id=%llu reason=%s",
+            (unsigned long long)state->client_id,
+            (unsigned long long)composition_id, reason);
+        lua_settop(L, base);
+        (void)cancel_host_ime(host, client, reason);
+        return 1;
+    }
+    {
+        const char *status = NULL;
+        size_t status_length = 0u;
+        if (!lua_istable(L, -1) ||
+            !model_get_text(L, -1, "status", &status, &status_length) ||
+            status_length != 8u || memcmp(status, "inserted", 8u) != 0) {
+            lua_settop(L, base);
+            (void)cancel_host_ime(host, client, "session_reset");
+            return 1;
+        }
+    }
+    lua_settop(L, base);
+    if (cdin_protocol_client_ime_commit_complete(client, composition_id) != CDIN_BACKEND_OK) {
+        CDIN_BACKEND_ERROR(host->backend->kernel, "PROTOCOL",
+            "IME commit completed in Runtime but Backend state could not close client_id=%llu composition_id=%llu",
+            (unsigned long long)cdin_protocol_client_id(client),
+            (unsigned long long)composition_id);
+        clear_host_ime(host);
+        return 1;
+    }
+    CDIN_BACKEND_INFO(host->backend->kernel, "PROTOCOL",
+        "IME composition committed once client_id=%llu composition_id=%llu bytes=%llu",
+        (unsigned long long)cdin_protocol_client_id(client),
+        (unsigned long long)composition_id, (unsigned long long)text_length);
+    clear_host_ime(host);
+    return 1;
+}
+
+static cdin_backend_status validate_active_ime(cdin_lua_host *host)
+{
+    lua_State *L;
+    int base, runtime_index;
+    cdin_protocol_client *client;
+    cdin_ime_composition_state *state;
+    if (host == NULL || !host->ime_composition.active) return CDIN_BACKEND_OK;
+    state = &host->ime_composition;
+    client = find_ime_client(host, state->client_id);
+    if (client == NULL || !cdin_protocol_client_is_attached(client)) {
+        clear_host_ime(host);
+        return CDIN_BACKEND_OK;
+    }
+    if (state->cancel_pending) {
+        return cancel_host_ime(host, client, state->cancel_reason);
+    }
+    if (!cdin_protocol_can_mutate(client)) {
+        return cancel_host_ime(host, client, "driver_revoked");
+    }
+    if (cdin_protocol_client_ime_id(client) != state->composition_id) {
+        clear_host_ime(host);
+        return CDIN_BACKEND_OK;
+    }
+    L = host->state;
+    base = lua_gettop(L);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, host->runtime_ref);
+    runtime_index = lua_absindex(L, -1);
+    lua_getfield(L, runtime_index, "validate_ime_composition");
+    if (!lua_isfunction(L, -1)) {
+        lua_settop(L, base);
+        return cancel_host_ime(host, client, "session_reset");
+    }
+    lua_pushvalue(L, runtime_index);
+    push_ime_context(L, state);
+    if (lua_pcall(L, 2, 1, 0) != LUA_OK) {
+        const char *reason = ime_cancel_reason_from_lua_error(L, -1);
+        lua_settop(L, base);
+        return cancel_host_ime(host, client, reason);
+    }
+    lua_settop(L, base);
+    return CDIN_BACKEND_OK;
+}
+
 static int dispatch_frontend_event(cdin_lua_host *host, cdin_protocol_client *client,
                                    const cdin_protocol_message *message)
 {
@@ -1659,6 +2020,19 @@ static int dispatch_frontend_event(cdin_lua_host *host, cdin_protocol_client *cl
      * are full-width uint64 values and may exceed LUA_MAXINTEGER. */
     if (message->type == CDIN_PROTOCOL_PANE_SPLITTER_RESIZE) {
         return dispatch_pane_splitter_resize(host, client, message);
+    }
+    if (message->type == CDIN_PROTOCOL_IME_COMPOSITION_START) {
+        return dispatch_ime_composition_start(host, client, message);
+    }
+    if (message->type == CDIN_PROTOCOL_IME_COMPOSITION_CANCEL) {
+        return dispatch_ime_composition_cancel(host, client, message);
+    }
+    if (message->type == CDIN_PROTOCOL_INPUT_TEXT) {
+        uint64_t composition_id = 0u;
+        if (cdin_protocol_payload_get_uint(message->payload, message->payload_length,
+                                           "composition_id", &composition_id) == CDIN_PROTOCOL_OK) {
+            return dispatch_ime_composition_commit(host, client, message);
+        }
     }
     if (type_name == NULL || !decode_event_payload(L, message->payload, message->payload_length)) {
         lua_settop(L, base);
@@ -1692,7 +2066,21 @@ static int dispatch_frontend_event(cdin_lua_host *host, cdin_protocol_client *cl
         lua_settop(L, base);
         return 1;
     }
-    lua_settop(L, base);
+    {
+        int lost_focus = 0;
+        if (message->type == CDIN_PROTOCOL_FOCUS) {
+            lua_getfield(L, event_index, "focused");
+            lost_focus = lua_isboolean(L, -1) && !lua_toboolean(L, -1);
+            lua_pop(L, 1);
+        }
+        lua_settop(L, base);
+        if (lost_focus && host->ime_composition.active &&
+            host->ime_composition.client_id == cdin_protocol_client_id(client)) {
+            (void)cancel_host_ime(host, client, "focus_lost");
+        } else {
+            (void)validate_active_ime(host);
+        }
+    }
     return 1;
 }
 
@@ -1709,6 +2097,7 @@ cdin_backend_status cdin_lua_host_dispatch_frontend(cdin_lua_host *host, size_t 
     if (!cdin_backend_is_owner(host->backend)) return CDIN_BACKEND_INVALID_STATE;
     *out_processed = 0u;
     clear_detached_pane_pending(host);
+    (void)validate_active_ime(host);
     if (host->backend->protocol == NULL) return CDIN_BACKEND_OK;
     count = (size_t)host->backend->config.max_frontends;
     if (count == 0u) return CDIN_BACKEND_OK;
