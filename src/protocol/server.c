@@ -347,6 +347,30 @@ int cdin_protocol_client_has_capability(const cdin_protocol_client *client, uint
         (client->accepted_capabilities & capability) == capability;
 }
 
+static int ime_frontend_cancel_reason_valid(const uint8_t *payload, size_t payload_length)
+{
+    char reason[32];
+    size_t reason_length = 0u;
+    if (cdin_protocol_payload_get_text(payload, payload_length, "reason",
+                                       reason, sizeof(reason), &reason_length) != CDIN_PROTOCOL_OK)
+        return 0;
+    return strcmp(reason, "ime_cancelled") == 0 ||
+           strcmp(reason, "focus_lost") == 0 ||
+           strcmp(reason, "view_changed") == 0;
+}
+
+static int ime_backend_cancel_reason_valid(const char *reason)
+{
+    return reason != NULL &&
+           (strcmp(reason, "focus_lost") == 0 ||
+            strcmp(reason, "stale_document") == 0 ||
+            strcmp(reason, "view_changed") == 0 ||
+            strcmp(reason, "selection_changed") == 0 ||
+            strcmp(reason, "view_removed") == 0 ||
+            strcmp(reason, "driver_revoked") == 0 ||
+            strcmp(reason, "session_reset") == 0);
+}
+
 static cdin_backend_status protocol_enqueue(cdin_protocol_client *client,
                                             const cdin_protocol_message *message,
                                             int is_flush_marker)
@@ -364,6 +388,16 @@ static cdin_backend_status protocol_enqueue(cdin_protocol_client *client,
     if (message->type == CDIN_PROTOCOL_IME_COMPOSITION_CANCEL &&
         !cdin_protocol_client_has_capability(client, CDIN_PROTOCOL_CAP_IME_COMPOSITION)) {
         return CDIN_BACKEND_UNSUPPORTED;
+    }
+    if (message->type == CDIN_PROTOCOL_IME_COMPOSITION_CANCEL) {
+        char reason[32];
+        size_t reason_length = 0u;
+        if (cdin_protocol_payload_get_text(message->payload, message->payload_length,
+                                            "reason", reason, sizeof(reason),
+                                            &reason_length) != CDIN_PROTOCOL_OK ||
+            !ime_backend_cancel_reason_valid(reason)) {
+            return CDIN_BACKEND_INVALID_ARGUMENT;
+        }
     }
     handshake_reply = (message->type == CDIN_PROTOCOL_HELLO_ACK ||
                        message->type == CDIN_PROTOCOL_DETACH_ACK);
@@ -835,6 +869,12 @@ cdin_backend_status cdin_protocol_receive(cdin_protocol_client *client,
                           client->id, CDIN_BACKEND_INVALID_ARGUMENT, (uint64_t)message->type);
         return CDIN_BACKEND_INVALID_ARGUMENT;
     }
+    if (is_ime_cancel &&
+        !ime_frontend_cancel_reason_valid(message->payload, message->payload_length)) {
+        cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "ime_cancel_reason_rejected",
+                          client->id, CDIN_BACKEND_INVALID_ARGUMENT, (uint64_t)message->type);
+        return CDIN_BACKEND_INVALID_ARGUMENT;
+    }
     if (is_ime_start || is_ime_update || is_ime_cancel) {
         if (cdin_protocol_payload_get_uint(message->payload, message->payload_length,
                                             "id", &ime_id) != CDIN_PROTOCOL_OK || ime_id == 0u)
@@ -1016,8 +1056,9 @@ cdin_backend_status cdin_protocol_client_ime_cancel(
     cdin_protocol_message message;
     cdin_backend_status status;
     if (!cdin_protocol_client_has_active_ime(client) || composition_id == 0u ||
-        client->ime_active_id != composition_id || reason == NULL)
+        client->ime_active_id != composition_id)
         return CDIN_BACKEND_INVALID_STATE;
+    if (!ime_backend_cancel_reason_valid(reason)) return CDIN_BACKEND_INVALID_ARGUMENT;
     reason_length = strlen(reason);
     if (reason_length == 0u || reason_length >= sizeof(client->ime_cancel_reason))
         return CDIN_BACKEND_INVALID_ARGUMENT;
