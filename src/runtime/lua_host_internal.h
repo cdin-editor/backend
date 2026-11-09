@@ -73,6 +73,18 @@ typedef struct cdin_pane_result_state {
     const char *status;
 } cdin_pane_result_state;
 
+typedef struct cdin_ime_composition_state {
+    int active;
+    int cancel_pending;
+    uint64_t client_id;
+    uint64_t composition_id;
+    uint64_t document_version;
+    uint64_t anchor;
+    uint64_t caret;
+    char view_id[129];
+    char cancel_reason[32];
+} cdin_ime_composition_state;
+
 struct cdin_lua_host {
     cdin_backend *backend;
     lua_State *state;
@@ -81,6 +93,7 @@ struct cdin_lua_host {
     int latest_ui_ref;
     size_t next_protocol_client;
     cdin_pane_result_state pane_result;
+    cdin_ime_composition_state ime_composition;
     int started;
     /* Optional Backend-owned extension resolver state. Disabled unless an
      * explicit extension_source_root was configured by the application. */
