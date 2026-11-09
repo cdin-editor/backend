@@ -579,6 +579,215 @@ static void test_pane_splitter_capability_driver_and_request_ids(void)
     cdin_protocol_server_destroy(server);
 }
 
+static void receive_ime_message(
+    cdin_protocol_client *client,
+    cdin_protocol_message_type type,
+    const char *name_space,
+    const uint8_t *payload,
+    size_t payload_length,
+    uint64_t sequence,
+    cdin_backend_status expected)
+{
+    cdin_protocol_message_view message;
+    memset(&message, 0, sizeof(message));
+    message.major = CDIN_PROTOCOL_VERSION_MAJOR;
+    message.minor = CDIN_PROTOCOL_VERSION_MINOR;
+    message.sequence = sequence;
+    message.type = type;
+    message.name_space = name_space;
+    message.payload = payload;
+    message.payload_length = payload_length;
+    assert(cdin_protocol_accept_input_sequence(client, sequence) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_receive(client, &message) == expected);
+}
+
+static cdin_protocol_client *new_attached_with_capabilities(
+    cdin_protocol_server *server, const char *name, uint64_t capabilities,
+    int *out_driver)
+{
+    cdin_protocol_client *client = NULL;
+    cdin_protocol_hello hello;
+    cdin_protocol_hello_ack ack;
+    assert(cdin_protocol_client_open(server, &client) == CDIN_BACKEND_OK);
+    memset(&hello, 0, sizeof(hello));
+    hello.major = CDIN_PROTOCOL_VERSION_MAJOR;
+    hello.minor = CDIN_PROTOCOL_VERSION_MINOR;
+    hello.frontend_name = name;
+    hello.capabilities = capabilities;
+    assert(cdin_protocol_hello_accept(client, &hello, &ack) == CDIN_BACKEND_OK);
+    assert((ack.accepted_capabilities & capabilities) == capabilities);
+    if (out_driver != NULL) *out_driver = ack.driver;
+    assert(cdin_protocol_attach(client) == CDIN_BACKEND_OK);
+    return client;
+}
+
+static void test_ime_connection_state_machine(void)
+{
+    static const uint8_t start_41[] = {
+        0xa3u,
+        0x62u, 'i','d', 0x18u, 0x29u,
+        0x67u, 'v','i','e','w','_','i','d', 0x66u, 'v','i','e','w','-','1',
+        0x70u, 'd','o','c','u','m','e','n','t','_','v','e','r','s','i','o','n', 0x07u
+    };
+    static const uint8_t start_42[] = {
+        0xa3u,
+        0x62u, 'i','d', 0x18u, 0x2au,
+        0x67u, 'v','i','e','w','_','i','d', 0x66u, 'v','i','e','w','-','1',
+        0x70u, 'd','o','c','u','m','e','n','t','_','v','e','r','s','i','o','n', 0x07u
+    };
+    static const uint8_t start_43[] = {
+        0xa3u,
+        0x62u, 'i','d', 0x18u, 0x2bu,
+        0x67u, 'v','i','e','w','_','i','d', 0x66u, 'v','i','e','w','-','1',
+        0x70u, 'd','o','c','u','m','e','n','t','_','v','e','r','s','i','o','n', 0x07u
+    };
+    static const uint8_t update_41[] = {
+        0xa5u,
+        0x62u, 'i','d', 0x18u, 0x29u,
+        0x67u, 'p','r','e','e','d','i','t', 0x62u, 0xc3u, 0xa9u,
+        0x6bu, 'c','u','r','s','o','r','_','b','y','t','e', 0x02u,
+        0x72u, 's','e','l','e','c','t','i','o','n','_','e','n','d','_','b','y','t','e', 0x02u,
+        0x74u, 's','e','l','e','c','t','i','o','n','_','s','t','a','r','t','_','b','y','t','e', 0x00u
+    };
+    static const uint8_t text_without_id[] = {
+        0xa1u, 0x64u, 't','e','x','t', 0x66u, 'c','o','m','m','i','t'
+    };
+    static const uint8_t text_with_id_41[] = {
+        0xa2u,
+        0x64u, 't','e','x','t', 0x66u, 'c','o','m','m','i','t',
+        0x6eu, 'c','o','m','p','o','s','i','t','i','o','n','_','i','d', 0x18u, 0x29u
+    };
+    static const uint8_t text_with_id_42[] = {
+        0xa2u,
+        0x64u, 't','e','x','t', 0x66u, 'c','o','m','m','i','t',
+        0x6eu, 'c','o','m','p','o','s','i','t','i','o','n','_','i','d', 0x18u, 0x2au
+    };
+    static const uint8_t cancel_42[] = {
+        0xa2u,
+        0x62u, 'i','d', 0x18u, 0x2au,
+        0x66u, 'r','e','a','s','o','n', 0x6du,
+        'i','m','e','_','c','a','n','c','e','l','l','e','d'
+    };
+    static const uint8_t key_event[] = {
+        0xa3u,
+        0x63u, 'k','e','y', 0x61u, 'x',
+        0x66u, 'a','c','t','i','o','n', 0x65u, 'p','r','e','s','s',
+        0x69u, 'm','o','d','i','f','i','e','r','s', 0x80u
+    };
+    cdin_protocol_server *server = NULL;
+    cdin_protocol_client *driver = NULL;
+    cdin_protocol_client *observer = NULL;
+    cdin_protocol_message queued;
+    int driver_role = 0;
+
+    assert(cdin_protocol_server_create(
+        2u, 4u, 2u, 0x11223344u, CDIN_PROTOCOL_CAP_IME_COMPOSITION,
+        1024u, NULL, NULL, &server) == CDIN_BACKEND_OK);
+    driver = new_attached_with_capabilities(
+        server, "ime-driver", CDIN_PROTOCOL_CAP_IME_COMPOSITION, &driver_role);
+    observer = new_attached_with_capabilities(
+        server, "ime-observer", CDIN_PROTOCOL_CAP_IME_COMPOSITION, NULL);
+    assert(driver_role != 0);
+    assert(!cdin_protocol_can_mutate(observer));
+
+    receive_ime_message(observer, CDIN_PROTOCOL_IME_COMPOSITION_START,
+        "ime", start_41, sizeof(start_41), 1u, CDIN_BACKEND_PERMISSION_DENIED);
+    receive_ime_message(driver, CDIN_PROTOCOL_IME_COMPOSITION_START,
+        "ime", start_41, sizeof(start_41), 1u, CDIN_BACKEND_OK);
+    assert(cdin_protocol_client_has_active_ime(driver));
+    assert(cdin_protocol_client_ime_id(driver) == 41u);
+    assert(cdin_protocol_pending_events(driver) == 1u);
+    assert(cdin_protocol_event_at(driver, 0u, &queued) == CDIN_BACKEND_OK);
+    assert(queued.type == CDIN_PROTOCOL_IME_COMPOSITION_START);
+    assert(cdin_protocol_consume_event(driver) == CDIN_BACKEND_OK);
+
+    /* Preedit is validated and discarded, never sent to the Runtime queue. */
+    receive_ime_message(driver, CDIN_PROTOCOL_IME_COMPOSITION_UPDATE,
+        "ime", update_41, sizeof(update_41), 2u, CDIN_BACKEND_OK);
+    assert(cdin_protocol_pending_events(driver) == 0u);
+
+    /* While composing, only the matching committed text may enter Runtime. */
+    receive_ime_message(driver, CDIN_PROTOCOL_INPUT_TEXT,
+        "core", text_without_id, sizeof(text_without_id), 3u, CDIN_BACKEND_INVALID_STATE);
+    assert(cdin_protocol_pending_events(driver) == 0u);
+    receive_ime_message(driver, CDIN_PROTOCOL_INPUT_TEXT,
+        "core", text_with_id_41, sizeof(text_with_id_41), 4u, CDIN_BACKEND_OK);
+    assert(cdin_protocol_client_ime_commit_pending(driver));
+    assert(cdin_protocol_pending_events(driver) == 1u);
+    receive_ime_message(driver, CDIN_PROTOCOL_INPUT_TEXT,
+        "core", text_with_id_41, sizeof(text_with_id_41), 5u, CDIN_BACKEND_INVALID_STATE);
+    assert(cdin_protocol_consume_event(driver) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_client_ime_commit_complete(driver, 41u) == CDIN_BACKEND_OK);
+    assert(!cdin_protocol_client_has_active_ime(driver));
+    assert(cdin_protocol_client_ime_commit_complete(driver, 41u) == CDIN_BACKEND_INVALID_STATE);
+
+    /* IDs cannot be reused after commit, even though no composition is active. */
+    receive_ime_message(driver, CDIN_PROTOCOL_IME_COMPOSITION_START,
+        "ime", start_41, sizeof(start_41), 6u, CDIN_BACKEND_INVALID_STATE);
+    receive_ime_message(driver, CDIN_PROTOCOL_IME_COMPOSITION_START,
+        "ime", start_42, sizeof(start_42), 7u, CDIN_BACKEND_OK);
+    assert(cdin_protocol_consume_event(driver) == CDIN_BACKEND_OK);
+    receive_ime_message(driver, CDIN_PROTOCOL_IME_COMPOSITION_CANCEL,
+        "ime", cancel_42, sizeof(cancel_42), 8u, CDIN_BACKEND_OK);
+    assert(!cdin_protocol_client_has_active_ime(driver));
+    assert(cdin_protocol_pending_events(driver) == 1u);
+    assert(cdin_protocol_consume_event(driver) == CDIN_BACKEND_OK);
+
+    /* Backend cancellation is an outbound ime.cancel control message and
+     * clears state only after the message has been admitted to the queue. */
+    receive_ime_message(driver, CDIN_PROTOCOL_IME_COMPOSITION_START,
+        "ime", start_43, sizeof(start_43), 9u, CDIN_BACKEND_OK);
+    assert(cdin_protocol_consume_event(driver) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_client_ime_cancel(
+        driver, 43u, "selection_changed") == CDIN_BACKEND_OK);
+    assert(!cdin_protocol_client_has_active_ime(driver));
+    assert(cdin_protocol_pending_messages(driver) == 1u);
+    assert(cdin_protocol_message_at(driver, 0u, &queued) == CDIN_BACKEND_OK);
+    assert(queued.type == CDIN_PROTOCOL_IME_COMPOSITION_CANCEL);
+    {
+        char reason[32];
+        size_t reason_length = 0u;
+        assert(cdin_protocol_payload_get_text(
+            queued.payload, queued.payload_length, "reason",
+            reason, sizeof(reason), &reason_length) == CDIN_PROTOCOL_OK);
+        assert(reason_length == strlen("selection_changed"));
+        assert(strcmp(reason, "selection_changed") == 0);
+    }
+
+    assert(cdin_protocol_client_close(driver) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_client_close(observer) == CDIN_BACKEND_OK);
+    cdin_protocol_server_destroy(server);
+
+    /* A full inbound queue does not lock the composition ID: the Frontend may
+     * retry the exact same commit with a new frame sequence once capacity frees. */
+    {
+        cdin_protocol_server *small_server = NULL;
+        cdin_protocol_client *small_driver = NULL;
+        assert(cdin_protocol_server_create(
+            1u, 2u, 1u, 0x55667788u, CDIN_PROTOCOL_CAP_IME_COMPOSITION,
+            1024u, NULL, NULL, &small_server) == CDIN_BACKEND_OK);
+        small_driver = new_attached_with_capabilities(
+            small_server, "ime-retry", CDIN_PROTOCOL_CAP_IME_COMPOSITION, NULL);
+        receive_ime_message(small_driver, CDIN_PROTOCOL_IME_COMPOSITION_START,
+            "ime", start_41, sizeof(start_41), 1u, CDIN_BACKEND_OK);
+        assert(cdin_protocol_consume_event(small_driver) == CDIN_BACKEND_OK);
+        receive_ime_message(small_driver, CDIN_PROTOCOL_INPUT_KEY,
+            "core", key_event, sizeof(key_event), 2u, CDIN_BACKEND_OK);
+        receive_ime_message(small_driver, CDIN_PROTOCOL_INPUT_KEY,
+            "core", key_event, sizeof(key_event), 3u, CDIN_BACKEND_OK);
+        receive_ime_message(small_driver, CDIN_PROTOCOL_INPUT_TEXT,
+            "core", text_with_id_41, sizeof(text_with_id_41), 4u, CDIN_BACKEND_QUEUE_FULL);
+        assert(cdin_protocol_client_has_active_ime(small_driver));
+        assert(!cdin_protocol_client_ime_commit_pending(small_driver));
+        assert(cdin_protocol_consume_event(small_driver) == CDIN_BACKEND_OK);
+        receive_ime_message(small_driver, CDIN_PROTOCOL_INPUT_TEXT,
+            "core", text_with_id_41, sizeof(text_with_id_41), 5u, CDIN_BACKEND_OK);
+        assert(cdin_protocol_client_ime_commit_pending(small_driver));
+        assert(cdin_protocol_client_close(small_driver) == CDIN_BACKEND_OK);
+        cdin_protocol_server_destroy(small_server);
+    }
+}
+
 int main(void)
 {
     test_hello_ack_assigns_driver_role();
@@ -587,6 +796,7 @@ int main(void)
     test_queue_flush_ack_and_inbound();
     test_flush_slot_is_reserved();
     test_pane_splitter_result_and_snapshot_are_atomic();
+    test_ime_connection_state_machine();
     test_atomic_ui_batch();
     puts("PASS protocol server: single-driver permissions, negotiated driver-role events, stable promotion, schema validation, coalescing, atomic UI batch, flush marker, ACK and binary event queue");
     return 0;

@@ -40,6 +40,11 @@ int cdin_lua_host_supports_pane_splitter(cdin_lua_host *host)
     (void)host;
     return 0;
 }
+int cdin_lua_host_supports_ime_composition(cdin_lua_host *host)
+{
+    (void)host;
+    return 0;
+}
 
 cdin_backend_status cdin_lua_host_publish_latest_ui(cdin_lua_host *host, cdin_protocol_client *client)
 {
@@ -100,6 +105,25 @@ int cdin_lua_host_supports_pane_splitter(cdin_lua_host *host)
     if (lua_isfunction(L, -1)) {
         lua_pushvalue(L, runtime_index);
         lua_pushliteral(L, "pane-splitter-resize/1");
+        if (lua_pcall(L, 2, 1, 0) == LUA_OK) supported = lua_toboolean(L, -1);
+    }
+    lua_settop(L, base);
+    return supported;
+}
+int cdin_lua_host_supports_ime_composition(cdin_lua_host *host)
+{
+    lua_State *L;
+    int base, runtime_index, supported = 0;
+    if (host == NULL || host->state == NULL || !host->started ||
+        !cdin_backend_is_owner(host->backend)) return 0;
+    L = host->state;
+    base = lua_gettop(L);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, host->runtime_ref);
+    runtime_index = lua_absindex(L, -1);
+    lua_getfield(L, runtime_index, "supports_protocol_capability");
+    if (lua_isfunction(L, -1)) {
+        lua_pushvalue(L, runtime_index);
+        lua_pushliteral(L, "ime-composition/1");
         if (lua_pcall(L, 2, 1, 0) == LUA_OK) supported = lua_toboolean(L, -1);
     }
     lua_settop(L, base);
