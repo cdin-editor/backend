@@ -93,4 +93,14 @@ size_t cdin_protocol_client_payload_limit(const cdin_protocol_client *client);
 int cdin_protocol_client_has_snapshot(const cdin_protocol_client *client);
 uint64_t cdin_protocol_client_snapshot_revision(const cdin_protocol_client *client);
 
+/* Per-connection IME state. Updates are validated and discarded; only the
+ * captured start and committed input.text are dispatched to the Runtime. */
+int cdin_protocol_client_has_active_ime(const cdin_protocol_client *client);
+uint64_t cdin_protocol_client_ime_id(const cdin_protocol_client *client);
+int cdin_protocol_client_ime_commit_pending(const cdin_protocol_client *client);
+cdin_backend_status cdin_protocol_client_ime_commit_complete(
+    cdin_protocol_client *client, uint64_t composition_id);
+cdin_backend_status cdin_protocol_client_ime_cancel(
+    cdin_protocol_client *client, uint64_t composition_id, const char *reason);
+
 #endif
