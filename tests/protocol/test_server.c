@@ -657,11 +657,6 @@ static void test_ime_connection_state_machine(void)
         0x64u, 't','e','x','t', 0x66u, 'c','o','m','m','i','t',
         0x6eu, 'c','o','m','p','o','s','i','t','i','o','n','_','i','d', 0x18u, 0x29u
     };
-    static const uint8_t text_with_id_42[] = {
-        0xa2u,
-        0x64u, 't','e','x','t', 0x66u, 'c','o','m','m','i','t',
-        0x6eu, 'c','o','m','p','o','s','i','t','i','o','n','_','i','d', 0x18u, 0x2au
-    };
     static const uint8_t cancel_42[] = {
         0xa2u,
         0x62u, 'i','d', 0x18u, 0x2au,
