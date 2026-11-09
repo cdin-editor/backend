@@ -657,6 +657,17 @@ static void test_ime_connection_state_machine(void)
         0x64u, 't','e','x','t', 0x66u, 'c','o','m','m','i','t',
         0x6eu, 'c','o','m','p','o','s','i','t','i','o','n','_','i','d', 0x18u, 0x29u
     };
+    static const uint8_t empty_commit_43[] = {
+        0xa2u,
+        0x64u, 't','e','x','t', 0x60u,
+        0x6eu, 'c','o','m','p','o','s','i','t','i','o','n','_','i','d', 0x18u, 0x2bu
+    };
+    static const uint8_t frontend_cancel_backend_reason_43[] = {
+        0xa2u,
+        0x62u, 'i','d', 0x18u, 0x2bu,
+        0x66u, 'r','e','a','s','o','n', 0x6eu,
+        's','t','a','l','e','_','d','o','c','u','m','e','n','t'
+    };
     static const uint8_t cancel_42[] = {
         0xa2u,
         0x62u, 'i','d', 0x18u, 0x2au,
@@ -733,6 +744,21 @@ static void test_ime_connection_state_machine(void)
     receive_ime_message(driver, CDIN_PROTOCOL_IME_COMPOSITION_START,
         "ime", start_43, sizeof(start_43), 9u, CDIN_BACKEND_OK);
     assert(cdin_protocol_consume_event(driver) == CDIN_BACKEND_OK);
+    /* Empty final text is not a commit and leaves the composition cancellable. */
+    receive_ime_message(driver, CDIN_PROTOCOL_INPUT_TEXT,
+        "core", empty_commit_43, sizeof(empty_commit_43), 10u,
+        CDIN_BACKEND_INVALID_ARGUMENT);
+    assert(cdin_protocol_client_has_active_ime(driver));
+    assert(!cdin_protocol_client_ime_commit_pending(driver));
+    /* A Frontend cannot send a cancellation reason reserved for Backend. */
+    receive_ime_message(driver, CDIN_PROTOCOL_IME_COMPOSITION_CANCEL,
+        "ime", frontend_cancel_backend_reason_43,
+        sizeof(frontend_cancel_backend_reason_43), 11u,
+        CDIN_BACKEND_INVALID_ARGUMENT);
+    assert(cdin_protocol_client_has_active_ime(driver));
+    assert(cdin_protocol_client_ime_cancel(
+        driver, 43u, "ime_cancelled") == CDIN_BACKEND_INVALID_ARGUMENT);
+    assert(cdin_protocol_client_has_active_ime(driver));
     assert(cdin_protocol_client_ime_cancel(
         driver, 43u, "selection_changed") == CDIN_BACKEND_OK);
     assert(!cdin_protocol_client_has_active_ime(driver));
