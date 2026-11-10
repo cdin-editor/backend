@@ -47,7 +47,21 @@ same version. Original EOL bytes, NUL and invalid UTF-8 are preserved. Only comp
 returned; a too-large first line produces a structured limit error, and a partial line is never
 sent. A stale version produces `STALE_VERSION` and requires a fresh model/line request.
 
-## 5. Remaining integration gates
+## 5. Optional byte-anchored line windows
+
+The optional `byte-anchored-lines/1` capability is accepted by Spec ADR-0027.
+A client that requests and receives this capability may include `anchor_byte`
+in `view.request_lines`; the required `first_line` remains a valid fallback
+for older peers. Backend resolves the anchor using the Kernel line index and
+reads the returned complete-line window against the same immutable snapshot.
+Negotiated peers receive `first_byte` in every `view.lines` response, even
+when the request uses only `first_line`. Peers without the capability retain
+the original line-number-only wire shape. Backend rejects an anchor request
+from a peer that did not negotiate the capability. The capability is not
+advertised until the Backend, Runtime and Frontend implementations pass the
+shared Spec vectors and CDIN product E2E.
+
+## 6. Remaining integration gates
 
 The Backend Protocol/Runtime bridge source is implemented in this local source snapshot, but the following must still happen before production Frontend use:
 
@@ -58,7 +72,7 @@ The Backend Protocol/Runtime bridge source is implemented in this local source s
 
 See [Frontend Integration Guide](frontend-integration.md), [Host API](host-api.md), [Spec traceability](spec-traceability.md) and [1.0.0 readiness](1.0.0-readiness.md).
 
-## 6. Message catalogue
+## 7. Message catalogue
 
 The public enum and validator cover: `hello`, `hello_ack`, `attach`, `detach`, `detach_ack`,
 `ack`, `input.key`, `input.text`, `input.mouse`, `input.paste`, `window.resize`, `focus`,
