@@ -95,8 +95,6 @@ line anchor or alter `scroll_anchor`.
 
 The accepted optional `byte-anchored-lines/1` extension adds `anchor_byte` to a request and `first_byte` to negotiated responses. Backend resolves the anchor, computes the actual first line and reads its byte window under one Kernel Snapshot. A peer that negotiated the capability receives `first_byte` even when it uses the `first_line` fallback.
 
-
-
 ```lua
 host.documents:read_lines(handle, {
   first_line = 120,       -- required zero-based compatibility line index
