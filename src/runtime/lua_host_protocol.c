@@ -1271,10 +1271,12 @@ static void queue_lua_error(cdin_lua_host *host, cdin_protocol_client *client,
 }
 
 static int encode_view_lines_payload(lua_State *L, int result_index, const char *view_id,
-                                     size_t view_id_length, size_t limit, cbor_buffer *payload)
+                                     size_t view_id_length, int include_first_byte,
+                                     size_t limit, cbor_buffer *payload)
 {
-    cbor_buffer lines = { 0 }, version = { 0 }, first_line = { 0 }, total_lines = { 0 }, id = { 0 };
-    cbor_map_entry entries[5];
+    cbor_buffer lines = { 0 }, version = { 0 }, first_line = { 0 },
+                first_byte = { 0 }, total_lines = { 0 }, id = { 0 };
+    cbor_map_entry entries[6];
     size_t count;
     size_t index;
     int result = lua_absindex(L, result_index);
@@ -1282,6 +1284,7 @@ static int encode_view_lines_payload(lua_State *L, int result_index, const char 
     int ok = 0;
     uint64_t version_value;
     uint64_t first_line_value;
+    uint64_t first_byte_value = 0u;
     uint64_t total_lines_value;
     lines.limit = limit;
     lua_getfield(L, result, "version");
@@ -1292,6 +1295,12 @@ static int encode_view_lines_payload(lua_State *L, int result_index, const char 
     if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) < 0) { lua_pop(L, 1); goto done; }
     first_line_value = (uint64_t)lua_tointeger(L, -1);
     lua_pop(L, 1);
+    lua_getfield(L, result, "first_byte");
+    if (include_first_byte) {
+        if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) < 0) { lua_pop(L, 1); goto done; }
+        first_byte_value = (uint64_t)lua_tointeger(L, -1);
+    }
+    lua_pop(L, 1);
     lua_getfield(L, result, "total_lines");
     if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) < 1) { lua_pop(L, 1); goto done; }
     total_lines_value = (uint64_t)lua_tointeger(L, -1);
@@ -1300,8 +1309,6 @@ static int encode_view_lines_payload(lua_State *L, int result_index, const char 
     if (!lua_istable(L, -1)) { lua_pop(L, 1); goto done; }
     lines_index = lua_absindex(L, -1);
     count = lua_rawlen(L, lines_index);
-    /* Reject inconsistent windows before constructing a wire payload. This
-     * keeps the line range tied to the exact total_lines reported by Kernel. */
     if (count == 0u || count > 4096u || first_line_value >= total_lines_value ||
         (uint64_t)count > total_lines_value - first_line_value ||
         !cbor_write_head(&lines, 4u, (uint64_t)count)) {
@@ -1325,6 +1332,7 @@ static int encode_view_lines_payload(lua_State *L, int result_index, const char 
     lua_pop(L, 1);
     if (!make_uint_value(version_value, &version, limit) ||
         !make_uint_value(first_line_value, &first_line, limit) ||
+        (include_first_byte && !make_uint_value(first_byte_value, &first_byte, limit)) ||
         !make_uint_value(total_lines_value, &total_lines, limit) ||
         !make_text_value(view_id, view_id_length, &id, limit)) goto done;
     entries[0].key = "lines"; entries[0].key_length = 5u;
@@ -1333,15 +1341,27 @@ static int encode_view_lines_payload(lua_State *L, int result_index, const char 
     entries[1].value = version.data; entries[1].value_length = version.length;
     entries[2].key = "view_id"; entries[2].key_length = 7u;
     entries[2].value = id.data; entries[2].value_length = id.length;
-    entries[3].key = "first_line"; entries[3].key_length = 10u;
-    entries[3].value = first_line.data; entries[3].value_length = first_line.length;
-    entries[4].key = "total_lines"; entries[4].key_length = 11u;
-    entries[4].value = total_lines.data; entries[4].value_length = total_lines.length;
-    ok = make_map_payload(payload, entries, 5u, limit);
+    if (include_first_byte) {
+        /* Deterministic CBOR sorts equal-length text keys lexicographically:
+         * first_byte precedes first_line. */
+        entries[3].key = "first_byte"; entries[3].key_length = 10u;
+        entries[3].value = first_byte.data; entries[3].value_length = first_byte.length;
+        entries[4].key = "first_line"; entries[4].key_length = 10u;
+        entries[4].value = first_line.data; entries[4].value_length = first_line.length;
+        entries[5].key = "total_lines"; entries[5].key_length = 11u;
+        entries[5].value = total_lines.data; entries[5].value_length = total_lines.length;
+    } else {
+        entries[3].key = "first_line"; entries[3].key_length = 10u;
+        entries[3].value = first_line.data; entries[3].value_length = first_line.length;
+        entries[4].key = "total_lines"; entries[4].key_length = 11u;
+        entries[4].value = total_lines.data; entries[4].value_length = total_lines.length;
+    }
+    ok = make_map_payload(payload, entries, include_first_byte ? 6u : 5u, limit);
 done:
     buffer_free(&lines);
     buffer_free(&version);
     buffer_free(&first_line);
+    buffer_free(&first_byte);
     buffer_free(&total_lines);
     buffer_free(&id);
     return ok;
@@ -1354,11 +1374,15 @@ static int lua_call_read_view_lines(cdin_lua_host *host, cdin_protocol_client *c
     int base = lua_gettop(L);
     int event = lua_absindex(L, event_index);
     int runtime_index;
+    int has_anchor_byte = 0;
+    int has_byte_capability =
+        cdin_protocol_client_has_capability(client, CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES);
     const char *view_id;
     size_t view_id_length;
     uint64_t first_line;
     uint64_t line_count;
     uint64_t expected_version;
+    uint64_t anchor_byte = 0u;
     cbor_buffer payload = { 0 };
     cdin_protocol_message response;
     cdin_backend_status status;
@@ -1366,7 +1390,7 @@ static int lua_call_read_view_lines(cdin_lua_host *host, cdin_protocol_client *c
     lua_getfield(L, event, "view_id");
     if (lua_type(L, -1) != LUA_TSTRING) { lua_settop(L, base); return 0; }
     view_id = lua_tolstring(L, -1, &view_id_length);
-    lua_pushvalue(L, -1); /* Keep the id alive while the Lua method executes. */
+    lua_pushvalue(L, -1);
     lua_pop(L, 1);
     lua_getfield(L, event, "first_line");
     if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) < 0) { lua_settop(L, base); return 0; }
@@ -1377,6 +1401,22 @@ static int lua_call_read_view_lines(cdin_lua_host *host, cdin_protocol_client *c
     lua_getfield(L, event, "version");
     if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) < 0) { lua_settop(L, base); return 0; }
     expected_version = (uint64_t)lua_tointeger(L, -1); lua_pop(L, 1);
+    lua_getfield(L, event, "anchor_byte");
+    if (!lua_isnil(L, -1)) {
+        if (!lua_isinteger(L, -1) || lua_tointeger(L, -1) < 0) {
+            lua_settop(L, base);
+            queue_protocol_error(host, client, "INVALID_SCHEMA", "anchor_byte must be a non-negative integer");
+            return 1;
+        }
+        has_anchor_byte = 1;
+        anchor_byte = (uint64_t)lua_tointeger(L, -1);
+    }
+    lua_pop(L, 1);
+    if (has_anchor_byte && !has_byte_capability) {
+        lua_settop(L, base);
+        queue_protocol_error(host, client, "UNSUPPORTED", "byte-anchored-lines/1 was not negotiated");
+        return 1;
+    }
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, host->runtime_ref);
     runtime_index = lua_absindex(L, -1);
@@ -1387,12 +1427,15 @@ static int lua_call_read_view_lines(cdin_lua_host *host, cdin_protocol_client *c
     lua_pushinteger(L, (lua_Integer)first_line);
     lua_pushinteger(L, (lua_Integer)line_count);
     lua_pushinteger(L, (lua_Integer)expected_version);
-    if (lua_pcall(L, 5, 1, 0) != LUA_OK) {
+    if (has_anchor_byte) lua_pushinteger(L, (lua_Integer)anchor_byte);
+    else lua_pushnil(L);
+    if (lua_pcall(L, 6, 1, 0) != LUA_OK) {
         queue_lua_error(host, client, L, -1);
         lua_settop(L, base);
         return 1;
     }
-    if (!lua_istable(L, -1) || !encode_view_lines_payload(L, -1, view_id, view_id_length,
+    if (!lua_istable(L, -1) || !encode_view_lines_payload(L, -1, view_id,
+            view_id_length, has_byte_capability,
             (size_t)cdin_protocol_client_payload_limit(client), &payload)) {
         lua_settop(L, base);
         queue_protocol_error(host, client, "INTERNAL", "Runtime returned an invalid view.lines result");

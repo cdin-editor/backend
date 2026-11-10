@@ -93,21 +93,29 @@ line anchor or alter `scroll_anchor`.
 
 ### `read_lines()` contract
 
+The accepted optional `byte-anchored-lines/1` extension adds `anchor_byte` to a request and `first_byte` to negotiated responses. Backend resolves the anchor, computes the actual first line and reads its byte window under one Kernel Snapshot. A peer that negotiated the capability receives `first_byte` even when it uses the `first_line` fallback.
+
 ```lua
 host.documents:read_lines(handle, {
-  first_line = 120,       -- zero-based logical line index
+  first_line = 120,       -- required zero-based compatibility line index
+  anchor_byte = 16384,    -- optional; authoritative when present
   line_count = 80,        -- 1..4096
   expected_version = 42,  -- mandatory for a pinned Frontend request
   max_bytes = 65536,      -- optional, bounded by the negotiated frame size
 })
--- -> { version, first_line, total_lines, lines = { "raw bytes", ... } }
+-- -> { version, first_line, first_byte, total_lines, lines = { "raw bytes", ... } }
 ```
 
 The Backend acquires a temporary `cdin_snapshot`, calls the Kernel's public
 `cdin_text_line_count()`, `cdin_text_line_start()` and `cdin_text_read()` APIs,
-then releases the snapshot before returning. A concurrent edit cannot mix line
-offsets and bytes from different versions. A stale expected version returns
-`STALE_VERSION`; a line window contains complete lines only. A bounded response
+then releases the snapshot before returning. When `anchor_byte` is supplied,
+Backend validates the legacy `first_line` fallback, resolves the byte anchor to
+its containing logical line, and derives `first_line`, `first_byte` and all line
+bytes from this same snapshot. A concurrent edit cannot mix line offsets and
+bytes from different versions. A stale expected version returns
+`STALE_VERSION`; an anchor beyond the snapshot length returns `OUT_OF_RANGE`;
+a line window contains complete lines only. The optional `anchor_byte` field
+is only used when the connection negotiated `byte-anchored-lines/1`. A bounded response
 may contain fewer than the requested number of lines, allowing the Frontend to
 continue at `first_line + #lines`. `total_lines` is captured from the same
 Kernel snapshot and is suitable for scrollbar/viewport bounds only while its
@@ -197,9 +205,7 @@ Backend completion queue, but must never enter the Lua state.
 
 ## 8. Current verification boundary
 
-Protocol-only and service tests pass in this workspace. The actual Runtime
-repository remains a separate, read-only inspected source tree; the companion
-patch must be applied and reviewed there. A production build with real Lua 5.4
+Protocol-only and service tests pass in this workspace. The Runtime repository now has a companion implementation branch for the accepted byte-anchor API; its pull request and exact CI result are tracked alongside this Backend change. A production build with real Lua 5.4
 development headers and the installed Kernel package, plus live Runtime/Kernel
 integration tests, has not yet been executed. The OS transport adapters are
 also not part of this source snapshot.

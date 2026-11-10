@@ -51,6 +51,7 @@ int main(void)
     cdin_host_handle subscription = {0u, 0u};
     cdin_host_doc_info info;
     cdin_host_doc_info snapshot_info;
+    cdin_host_doc_info lone_cr_info;
     cdin_host_read_result read_result;
     cdin_host_edit_result edit_result;
     cdin_host_error_details error_details;
@@ -89,6 +90,53 @@ int main(void)
         CHECK(cdin_kernel_host_document_line_from_offset(
             host, document, 0u, 9u, &position) == CDIN_BACKEND_STALE_VERSION);
         CHECK(position.details.expected == 9u && position.details.current == 0u);
+    }
+    {
+        cdin_host_lines_result lines;
+        static const uint8_t lone_cr_bytes[] = { 'a', '\r', 'b', '\r', 'c' };
+        cdin_host_handle lone_cr_document = {0u, 0u};
+
+        CHECK(cdin_kernel_host_document_read_lines(host, document, 0u, 0, 0u,
+            2u, 0u, 12u, &lines) == CDIN_BACKEND_OK);
+        CHECK(lines.version == 0u && lines.first_line == 0u && lines.first_byte == 0u);
+        CHECK(lines.total_lines == 3u && lines.count == 1u);
+        CHECK(lines.lines[0].length == 12u);
+        CHECK(memcmp(lines.lines[0].bytes, "hello world\n", 12u) == 0);
+        cdin_kernel_host_lines_result_free(&lines);
+
+        CHECK(cdin_kernel_host_document_read_lines(host, document, 0u, 1, 12u,
+            2u, 0u, 12u, &lines) == CDIN_BACKEND_OK);
+        CHECK(lines.first_line == 1u && lines.first_byte == 12u);
+        CHECK(lines.count == 2u && lines.lines[0].length == 12u);
+        CHECK(memcmp(lines.lines[0].bytes, "second line\n", 12u) == 0);
+        CHECK(lines.lines[1].length == 0u); /* final empty line at EOF */
+        cdin_kernel_host_lines_result_free(&lines);
+        CHECK(cdin_kernel_host_document_read_lines(host, document, 0u, 1, 24u,
+            1u, 0u, 64u, &lines) == CDIN_BACKEND_OK);
+        CHECK(lines.first_line == 2u && lines.first_byte == 24u);
+        CHECK(lines.total_lines == 3u && lines.count == 1u);
+        CHECK(lines.lines[0].length == 0u);
+        cdin_kernel_host_lines_result_free(&lines);
+
+        CHECK(cdin_kernel_host_document_read_lines(host, document, 0u, 1, 25u,
+            1u, 0u, 64u, &lines) == CDIN_BACKEND_OUT_OF_RANGE);
+        CHECK(lines.details.requested == 25u && lines.details.length == sizeof(original) - 1u);
+        cdin_kernel_host_lines_result_free(&lines);
+
+        CHECK(cdin_kernel_host_document_read_lines(host, document, 0u, 1, 12u,
+            1u, 9u, 64u, &lines) == CDIN_BACKEND_STALE_VERSION);
+        CHECK(lines.details.expected == 9u && lines.details.current == 0u);
+        cdin_kernel_host_lines_result_free(&lines);
+
+        CHECK(cdin_kernel_host_document_create(host, lone_cr_bytes, sizeof(lone_cr_bytes),
+                                               &lone_cr_document, &lone_cr_info) == CDIN_BACKEND_OK);
+        CHECK(cdin_kernel_host_document_read_lines(host, lone_cr_document, 0u, 1, 2u,
+            1u, 0u, 64u, &lines) == CDIN_BACKEND_OK);
+        CHECK(lines.first_line == 1u && lines.first_byte == 2u);
+        CHECK(lines.count == 1u && lines.lines[0].length == 2u);
+        CHECK(memcmp(lines.lines[0].bytes, "b\r", 2u) == 0);
+        cdin_kernel_host_lines_result_free(&lines);
+        CHECK(cdin_kernel_host_document_close(host, lone_cr_document) == CDIN_BACKEND_OK);
     }
     CHECK(cdin_kernel_host_document_is_clean(host, document, &is_clean) == CDIN_BACKEND_OK);
     CHECK(is_clean == 1);

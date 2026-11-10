@@ -217,6 +217,8 @@ void cdin_kernel_host_lines_result_free(cdin_host_lines_result *result)
 cdin_backend_status cdin_kernel_host_document_read_lines(cdin_kernel_host *host,
                                                           cdin_host_handle handle,
                                                           uint64_t first_line,
+                                                          int has_anchor_byte,
+                                                          uint64_t anchor_byte,
                                                           size_t line_count,
                                                           uint64_t expected_version,
                                                           size_t max_bytes,
@@ -228,6 +230,9 @@ cdin_backend_status cdin_kernel_host_document_read_lines(cdin_kernel_host *host,
     cdin_version version = 0u;
     uint64_t total_lines = 0u;
     uint64_t total_bytes = 0u;
+    uint64_t actual_first_line = first_line;
+    uint64_t document_length = 0u;
+    uint64_t anchor_column = 0u;
     size_t wanted_count;
     size_t index;
     cdin_status kernel_status;
@@ -255,14 +260,43 @@ cdin_backend_status cdin_kernel_host_document_read_lines(cdin_kernel_host *host,
     kernel_status = cdin_text_line_count(host->kernel, source, &total_lines);
     if (kernel_status != CDIN_OK) { status = cdin_kernel_map_status(kernel_status); goto cleanup; }
     out_result->total_lines = total_lines;
+
+    /* Keep the legacy fallback valid even when an anchor is present. This lets
+     * an older Backend safely ignore the additive anchor field. */
     if (first_line >= total_lines) {
         out_result->details.requested = first_line;
         out_result->details.length = total_lines;
         status = CDIN_BACKEND_OUT_OF_RANGE;
         goto cleanup;
     }
-    wanted_count = (size_t)((uint64_t)line_count > total_lines - first_line
-        ? total_lines - first_line : (uint64_t)line_count);
+
+    if (has_anchor_byte) {
+        kernel_status = cdin_text_len(host->kernel, source, &document_length);
+        if (kernel_status != CDIN_OK) {
+            status = cdin_kernel_map_status(kernel_status);
+            goto cleanup;
+        }
+        if (anchor_byte > document_length) {
+            out_result->details.requested = anchor_byte;
+            out_result->details.length = document_length;
+            status = CDIN_BACKEND_OUT_OF_RANGE;
+            goto cleanup;
+        }
+        kernel_status = cdin_text_line_from_offset(
+            host->kernel, source, anchor_byte, &actual_first_line, &anchor_column);
+        if (kernel_status != CDIN_OK) {
+            status = cdin_kernel_map_status(kernel_status);
+            goto cleanup;
+        }
+        if (actual_first_line >= total_lines) {
+            status = CDIN_BACKEND_INTERNAL;
+            goto cleanup;
+        }
+    }
+
+    out_result->first_line = actual_first_line;
+    wanted_count = (size_t)((uint64_t)line_count > total_lines - actual_first_line
+        ? total_lines - actual_first_line : (uint64_t)line_count);
     if (wanted_count > SIZE_MAX / sizeof(*out_result->lines)) {
         status = CDIN_BACKEND_LIMIT_EXCEEDED;
         goto cleanup;
@@ -271,7 +305,7 @@ cdin_backend_status cdin_kernel_host_document_read_lines(cdin_kernel_host *host,
     if (out_result->lines == NULL) { status = CDIN_BACKEND_NO_MEMORY; goto cleanup; }
 
     for (index = 0u; index < wanted_count; index++) {
-        uint64_t line = first_line + (uint64_t)index;
+        uint64_t line = actual_first_line + (uint64_t)index;
         uint64_t start = 0u;
         uint64_t end = 0u;
         size_t bytes_length;
@@ -287,6 +321,7 @@ cdin_backend_status cdin_kernel_host_document_read_lines(cdin_kernel_host *host,
         }
         if (end < start || end - start > SIZE_MAX) { status = CDIN_BACKEND_INTERNAL; goto cleanup; }
         bytes_length = (size_t)(end - start);
+        if (index == 0u) out_result->first_byte = start;
         if (bytes_length > max_bytes - (size_t)total_bytes) {
             if (index == 0u) {
                 out_result->details.required = (uint64_t)bytes_length;

@@ -242,6 +242,10 @@ cdin_backend_status cdin_backend_start(cdin_backend *backend)
                 cdin_lua_host_supports_ime_composition(backend->runtime)) {
                 supported_capabilities |= CDIN_PROTOCOL_CAP_IME_COMPOSITION;
             }
+            if (backend->runtime != NULL &&
+                cdin_lua_host_supports_byte_anchored_lines(backend->runtime)) {
+                supported_capabilities |= CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES;
+            }
             status = cdin_protocol_server_create(backend->config.max_frontends,
                                                  backend->config.outgoing_queue_capacity,
                                                  backend->config.max_pending_completions,
