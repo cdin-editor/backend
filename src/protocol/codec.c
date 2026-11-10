@@ -1005,7 +1005,7 @@ static int cbor_validate_ui_tree_nodes(const uint8_t *data, size_t length,
         cbor_item node;
         if (!cbor_skip(&cursor, 1u, &node) || node.major != CBOR_MAJOR_MAP ||
             !cbor_validate_ui_tree_node(cursor.data + node.start, node.end - node.start,
-                                        depth + 1u, nodes, ids)) return 0;
+                                        depth, nodes, ids)) return 0;
     }
     return cursor.offset == cursor.length;
 }
@@ -1019,7 +1019,7 @@ static int cbor_validate_ui_tree_node(const uint8_t *data, size_t length,
     int action_present;
     if (depth > 16u || *nodes >= 128u ||
         !cbor_validate_ui_id_field(data, length, "id", ids) ||
-        !cbor_field_text_nonempty(data, length, "label", 16384u) ||
+        !cbor_optional_text(data, length, "label", 16384u, 0) ||
         !cbor_optional_bool(data, length, "expanded") ||
         !cbor_optional_bool(data, length, "enabled") ||
         !cbor_find_field(data, length, "activate", &action, &action_present)) return 0;
@@ -1117,8 +1117,8 @@ static int cbor_validate_ui_widget(const uint8_t *data, size_t length,
             if (!cbor_skip(&cursor, 1u, &entry) || entry.major != CBOR_MAJOR_MAP ||
                 !cbor_validate_ui_id_field(cursor.data + entry.start, entry.end - entry.start,
                                            "id", &ids) ||
-                !cbor_field_text_nonempty(cursor.data + entry.start, entry.end - entry.start,
-                                          "label", 16384u) ||
+                !cbor_optional_text(cursor.data + entry.start, entry.end - entry.start,
+                                    "label", 16384u, 0) ||
                 !cbor_optional_text(cursor.data + entry.start, entry.end - entry.start,
                                     "detail", 16384u, 0) ||
                 !cbor_optional_bool(cursor.data + entry.start, entry.end - entry.start, "enabled") ||
@@ -1143,10 +1143,10 @@ static int cbor_validate_ui_widget(const uint8_t *data, size_t length,
     }
     if (kind_length == 6u && memcmp(kind, "button", 6u) == 0) {
         cbor_item action;
-        return cbor_field_text_nonempty(data, length, "label", 16384u) &&
-               cbor_find_field(data, length, "activate", &action, &present) &&
-               present && action.major == CBOR_MAJOR_MAP &&
-               cbor_validate_ui_action(data + action.start, action.end - action.start);
+        if (!cbor_optional_text(data, length, "label", 16384u, 0) ||
+            !cbor_find_field(data, length, "activate", &action, &present) ||
+            !present || action.major != CBOR_MAJOR_MAP) return 0;
+        return cbor_validate_ui_action(data + action.start, action.end - action.start);
     }
     if (kind_length == 5u && memcmp(kind, "input", 5u) == 0) {
         cbor_item submit;
@@ -1158,6 +1158,7 @@ static int cbor_validate_ui_widget(const uint8_t *data, size_t length,
             !cbor_find_field(data, length, "max_bytes", &item, &present)) return 0;
         if (present && (!cbor_field_uint(data, length, "max_bytes", &max_bytes) ||
             max_bytes > 16384u)) return 0;
+        if (kind_length > max_bytes) return 0;
         if (!cbor_find_field(data, length, "submit", &submit, &present) ||
             !present || submit.major != CBOR_MAJOR_MAP ||
             !cbor_validate_ui_action(data + submit.start, submit.end - submit.start)) return 0;
