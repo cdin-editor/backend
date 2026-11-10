@@ -89,6 +89,8 @@ int lua_doc_read_lines(lua_State *L)
     cdin_lua_handle *handle = check_handle(L, 2, CDIN_LUA_DOCUMENT);
     cdin_host_lines_result result;
     uint64_t first_line;
+    uint64_t anchor_byte = 0u;
+    int has_anchor_byte = 0;
     uint64_t requested_count;
     uint64_t expected;
     uint64_t max_bytes_value;
@@ -104,6 +106,12 @@ int lua_doc_read_lines(lua_State *L)
     first_line = field_u64(L, 3, "first_line", 0u);
     requested_count = field_u64(L, 3, "line_count", 0u);
     expected = field_u64(L, 3, "expected_version", UINT64_MAX);
+    lua_getfield(L, 3, "anchor_byte");
+    if (!lua_isnil(L, -1)) {
+        anchor_byte = check_u64(L, -1, "anchor_byte");
+        has_anchor_byte = 1;
+    }
+    lua_pop(L, 1);
     frame_limit = host->backend->config.max_message_bytes;
 
     /* Reserve the fixed view.lines envelope separately from every line item.
@@ -131,7 +139,8 @@ int lua_doc_read_lines(lua_State *L)
     max_bytes = (size_t)max_bytes_value;
 
     status = cdin_kernel_host_document_read_lines(host->backend->kernel, handle->value,
-        first_line, (size_t)requested_count, expected, max_bytes, &result);
+        first_line, has_anchor_byte, anchor_byte, (size_t)requested_count,
+        expected, max_bytes, &result);
     if (status != CDIN_BACKEND_OK) {
         cdin_lua_error_details details;
         memset(&details, 0, sizeof(details));
@@ -148,9 +157,10 @@ int lua_doc_read_lines(lua_State *L)
         return raise_status(L, status, "documents.read_lines", &details);
     }
 
-    lua_createtable(L, 0, 4);
+    lua_createtable(L, 0, 5);
     lua_pushinteger(L, (lua_Integer)result.version); lua_setfield(L, -2, "version");
-    lua_pushinteger(L, (lua_Integer)first_line); lua_setfield(L, -2, "first_line");
+    lua_pushinteger(L, (lua_Integer)result.first_line); lua_setfield(L, -2, "first_line");
+    lua_pushinteger(L, (lua_Integer)result.first_byte); lua_setfield(L, -2, "first_byte");
     lua_pushinteger(L, (lua_Integer)result.total_lines); lua_setfield(L, -2, "total_lines");
     lua_createtable(L, (int)result.count, 0);
     for (index = 0u; index < result.count; index++) {
