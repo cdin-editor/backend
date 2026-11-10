@@ -671,6 +671,53 @@ static void test_ime_composition_protocol(void)
         CDIN_PROTOCOL_DEFAULT_MAX_FRAME_BYTES) == CDIN_PROTOCOL_UNSUPPORTED);
 }
 
+static void test_ui_presentation_batch(void)
+{
+    static const uint8_t panel_tree[] = {
+        0xa3u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x03u,
+        0x68u, 'p','a','n','e','l','_','i','d', 0x64u, 't','r','e','e',
+        0x65u, 'p','a','n','e','l', 0xf6u
+    };
+    static const uint8_t panel_search[] = {
+        0xa3u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x03u,
+        0x68u, 'p','a','n','e','l','_','i','d', 0x66u, 's','e','a','r','c','h',
+        0x65u, 'p','a','n','e','l', 0xf6u
+    };
+    static const uint8_t prompt_clear[] = {
+        0xa2u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x03u,
+        0x66u, 'p','r','o','m','p','t', 0xf6u
+    };
+    cdin_protocol_message_view messages[17];
+    size_t index;
+
+    memset(messages, 0, sizeof(messages));
+    messages[0].type = CDIN_PROTOCOL_UI_PANEL;
+    messages[0].payload = panel_tree;
+    messages[0].payload_length = sizeof(panel_tree);
+    messages[1].type = CDIN_PROTOCOL_UI_PROMPT;
+    messages[1].payload = prompt_clear;
+    messages[1].payload_length = sizeof(prompt_clear);
+    messages[2].type = CDIN_PROTOCOL_UI_PANEL;
+    messages[2].payload = panel_search;
+    messages[2].payload_length = sizeof(panel_search);
+    assert(cdin_protocol_validate_presentation_batch(messages, 3u, 3u) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_validate_presentation_batch(messages, 3u, 4u) == CDIN_PROTOCOL_INVALID_SCHEMA);
+
+    messages[2].payload = panel_tree;
+    messages[2].payload_length = sizeof(panel_tree);
+    assert(cdin_protocol_validate_presentation_batch(messages, 3u, 3u) == CDIN_PROTOCOL_INVALID_SCHEMA);
+
+    for (index = 0u; index < 17u; index++) {
+        messages[index].type = CDIN_PROTOCOL_UI_PANEL;
+        messages[index].payload = (index == 0u) ? panel_tree : panel_search;
+        messages[index].payload_length = (index == 0u) ? sizeof(panel_tree) : sizeof(panel_search);
+    }
+    assert(cdin_protocol_validate_presentation_batch(messages, 17u, 3u) == CDIN_PROTOCOL_INVALID_SCHEMA);
+}
+
 static void test_direction_and_roles(void)
 {
     static const uint8_t role_changed[] = {
@@ -702,6 +749,7 @@ int main(void)
     test_stream_partial_io();
     test_frame_bounds();
     test_direction_and_roles();
+    test_ui_presentation_batch();
     test_pane_splitter_protocol();
     test_ime_composition_protocol();
     test_byte_anchored_line_window_schemas();
