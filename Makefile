@@ -13,6 +13,13 @@ LOGGER_MIN_VERSION ?= 0.1.0
 LUA_PKG ?= lua5.4
 WITH_LUA ?= auto
 HOST_OS := $(shell uname -s 2>/dev/null || printf unknown)
+# MinGW emits Windows executables with an .exe suffix. Keep the helper target
+# and the path passed to the native CreateProcessW API consistent with that.
+ifneq ($(filter MINGW% MSYS% CYGWIN%,$(HOST_OS)),)
+  EXE_SUFFIX := .exe
+else
+  EXE_SUFFIX :=
+endif
 
 BASE_CFLAGS := -std=c11 -Wall -Wextra -Wshadow -Wconversion -Wstrict-prototypes -Wformat=2 -Wpedantic -Werror
 CFLAGS ?= -O2
@@ -85,11 +92,16 @@ SERVICE_LIB := $(BUILD_DIR)/libcdin_backend_services.a
 BACKEND_LIB := $(BUILD_DIR)/libcdin_backend.a
 
 SCENARIO_OBJ := $(BUILD_DIR)/e2e/scenario.o
-CHILD_BIN := $(BUILD_DIR)/e2e/test_child_process
+CHILD_BIN := $(BUILD_DIR)/e2e/test_child_process$(EXE_SUFFIX)
 E2E_JOB := $(BUILD_DIR)/e2e/job_pipeline
 E2E_ABORT := $(BUILD_DIR)/e2e/job_abort_shutdown
 E2E_FS := $(BUILD_DIR)/e2e/platform_file_workflow
 E2E_PROCESS := $(BUILD_DIR)/e2e/process_supervision
+ifeq ($(EXE_SUFFIX),.exe)
+  CHILD_BIN_ARG := $(shell cygpath -m "$(abspath $(CHILD_BIN))")
+else
+  CHILD_BIN_ARG := $(abspath $(CHILD_BIN))
+endif
 INTEGRATION_BIN := $(BUILD_DIR)/integration/backend_session
 INTEGRATION_KERNEL_BIN := $(BUILD_DIR)/integration/kernel_document_workflow
 INTEGRATION_RESOLVER_BIN := $(BUILD_DIR)/integration/extension_resolver
@@ -202,7 +214,7 @@ e2e: protocol-test $(E2E_JOB) $(E2E_ABORT) $(E2E_FS) $(E2E_PROCESS)
 	$(E2E_JOB)
 	$(E2E_ABORT)
 	$(E2E_FS)
-	$(E2E_PROCESS) "$(abspath $(CHILD_BIN))"
+	$(E2E_PROCESS) "$(CHILD_BIN_ARG)"
 
 INTEGRATION_TARGETS := $(INTEGRATION_BIN) $(INTEGRATION_KERNEL_BIN)
 ifneq ($(strip $(LUA_CPPFLAGS)),)
