@@ -95,19 +95,25 @@ line anchor or alter `scroll_anchor`.
 
 ```lua
 host.documents:read_lines(handle, {
-  first_line = 120,       -- zero-based logical line index
+  first_line = 120,       -- required zero-based compatibility line index
+  anchor_byte = 16384,    -- optional; authoritative when present
   line_count = 80,        -- 1..4096
   expected_version = 42,  -- mandatory for a pinned Frontend request
   max_bytes = 65536,      -- optional, bounded by the negotiated frame size
 })
--- -> { version, first_line, total_lines, lines = { "raw bytes", ... } }
+-- -> { version, first_line, first_byte, total_lines, lines = { "raw bytes", ... } }
 ```
 
 The Backend acquires a temporary `cdin_snapshot`, calls the Kernel's public
 `cdin_text_line_count()`, `cdin_text_line_start()` and `cdin_text_read()` APIs,
-then releases the snapshot before returning. A concurrent edit cannot mix line
-offsets and bytes from different versions. A stale expected version returns
-`STALE_VERSION`; a line window contains complete lines only. A bounded response
+then releases the snapshot before returning. When `anchor_byte` is supplied,
+Backend validates the legacy `first_line` fallback, resolves the byte anchor to
+its containing logical line, and derives `first_line`, `first_byte` and all line
+bytes from this same snapshot. A concurrent edit cannot mix line offsets and
+bytes from different versions. A stale expected version returns
+`STALE_VERSION`; an anchor beyond the snapshot length returns `OUT_OF_RANGE`;
+a line window contains complete lines only. The optional `anchor_byte` field
+is only used when the connection negotiated `byte-anchored-lines/1`. A bounded response
 may contain fewer than the requested number of lines, allowing the Frontend to
 continue at `first_line + #lines`. `total_lines` is captured from the same
 Kernel snapshot and is suitable for scrollbar/viewport bounds only while its
