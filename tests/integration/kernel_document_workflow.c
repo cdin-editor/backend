@@ -51,6 +51,7 @@ int main(void)
     cdin_host_handle subscription = {0u, 0u};
     cdin_host_doc_info info;
     cdin_host_doc_info snapshot_info;
+    cdin_host_doc_info lone_cr_info;
     cdin_host_read_result read_result;
     cdin_host_edit_result edit_result;
     cdin_host_error_details error_details;
@@ -128,7 +129,7 @@ int main(void)
         cdin_kernel_host_lines_result_free(&lines);
 
         CHECK(cdin_kernel_host_document_create(host, lone_cr_bytes, sizeof(lone_cr_bytes),
-                                               &lone_cr_document, &info) == CDIN_BACKEND_OK);
+                                               &lone_cr_document, &lone_cr_info) == CDIN_BACKEND_OK);
         CHECK(cdin_kernel_host_document_read_lines(host, lone_cr_document, 0u, 1, 2u,
             1u, 0u, 64u, &lines) == CDIN_BACKEND_OK);
         CHECK(lines.first_line == 1u && lines.first_byte == 2u);
