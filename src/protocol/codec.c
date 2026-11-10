@@ -818,6 +818,482 @@ static int cbor_validate_ime_update(const uint8_t *payload, size_t payload_lengt
     return 1;
 }
 
+
+typedef struct ui_id_set {
+    size_t count;
+    size_t lengths[128];
+    uint8_t values[128][129];
+} ui_id_set;
+
+static int cbor_item_text_view(const uint8_t *data, size_t length,
+                               const cbor_item *item,
+                               const uint8_t **out_text, size_t *out_length)
+{
+    cbor_cursor cursor;
+    uint8_t major;
+    uint64_t text_length;
+    if (data == NULL || item == NULL || out_text == NULL || out_length == NULL ||
+        item->major != CBOR_MAJOR_TEXT || item->end < item->start || item->end > length)
+        return 0;
+    cursor.data = data + item->start;
+    cursor.length = item->end - item->start;
+    cursor.offset = 0u;
+    if (!cbor_read_head(&cursor, &major, &text_length) || major != CBOR_MAJOR_TEXT ||
+        text_length > SIZE_MAX || cursor.offset + (size_t)text_length != cursor.length)
+        return 0;
+    *out_text = cursor.data + cursor.offset;
+    *out_length = (size_t)text_length;
+    return 1;
+}
+
+static int cbor_optional_field(const uint8_t *data, size_t length, const char *name,
+                               field_kind kind, int *out_present, cbor_item *out_item)
+{
+    if (!cbor_find_field(data, length, name, out_item, out_present)) return 0;
+    return !*out_present || item_matches(out_item, kind);
+}
+
+static int cbor_optional_text(const uint8_t *data, size_t length, const char *name,
+                              size_t maximum, int allow_null)
+{
+    cbor_item item;
+    int present;
+    const uint8_t *text;
+    size_t text_length;
+    if (!cbor_find_field(data, length, name, &item, &present)) return 0;
+    if (!present) return 1;
+    if (allow_null && item.major == CBOR_MAJOR_SIMPLE && item.value == CBOR_NULL) return 1;
+    if (!cbor_item_text_view(data, length, &item, &text, &text_length) ||
+        text_length > maximum || memchr(text, 0, text_length) != NULL) return 0;
+    return 1;
+}
+
+static int cbor_optional_bool(const uint8_t *data, size_t length, const char *name)
+{
+    cbor_item item;
+    int present;
+    if (!cbor_find_field(data, length, name, &item, &present)) return 0;
+    return !present || (item.major == CBOR_MAJOR_SIMPLE &&
+        (item.value == CBOR_FALSE || item.value == CBOR_TRUE));
+}
+
+static int ui_id_set_add(ui_id_set *set, const uint8_t *id, size_t id_length)
+{
+    size_t i;
+    if (set == NULL || id == NULL || id_length == 0u || id_length > 128u ||
+        memchr(id, 0, id_length) != NULL || set->count >= 128u) return 0;
+    for (i = 0u; i < set->count; i++) {
+        if (set->lengths[i] == id_length &&
+            memcmp(set->values[i], id, id_length) == 0) return 0;
+    }
+    memcpy(set->values[set->count], id, id_length);
+    set->lengths[set->count] = id_length;
+    set->count++;
+    return 1;
+}
+
+static int cbor_validate_ui_id_field(const uint8_t *data, size_t length,
+                                     const char *field, ui_id_set *set)
+{
+    const uint8_t *id = NULL;
+    size_t id_length = 0u;
+    return cbor_field_text_value(data, length, field, &id, &id_length) &&
+           ui_id_set_add(set, id, id_length);
+}
+
+static int cbor_validate_ui_rgba(const uint8_t *data, size_t length)
+{
+    static const char *const channels[] = { "r", "g", "b", "a" };
+    size_t i;
+    cbor_item item;
+    int present;
+    if (!cbor_find_field(data, length, "__rgba__", &item, &present)) return 0;
+    for (i = 0u; i < sizeof(channels) / sizeof(channels[0]); i++) {
+        if (!cbor_field_uint_range(data, length, channels[i], 0u, 255u)) return 0;
+    }
+    return 1;
+}
+
+static int ui_role_id_valid(const uint8_t *text, size_t length)
+{
+    size_t i;
+    if (text == NULL || length == 0u || length > 64u) return 0;
+    for (i = 0u; i < length; i++) {
+        uint8_t c = text[i];
+        int alpha = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+        int digit = c >= '0' && c <= '9';
+        if (i == 0u) {
+            if (!alpha && !digit) return 0;
+        } else if (!alpha && !digit && c != '.' && c != '_' && c != '-') return 0;
+    }
+    return 1;
+}
+
+static int cbor_validate_ui_style_role(const uint8_t *data, size_t length)
+{
+    static const char *const bool_fields[] = {
+        "bold", "italic", "underline", "strikethrough", "dim", "inverse"
+    };
+    static const char *const color_fields[] = { "foreground", "background" };
+    size_t i;
+    for (i = 0u; i < sizeof(bool_fields) / sizeof(bool_fields[0]); i++) {
+        if (!cbor_optional_bool(data, length, bool_fields[i])) return 0;
+    }
+    for (i = 0u; i < sizeof(color_fields) / sizeof(color_fields[0]); i++) {
+        cbor_item color;
+        int present;
+        if (!cbor_find_field(data, length, color_fields[i], &color, &present)) return 0;
+        if (present && (color.major != CBOR_MAJOR_MAP ||
+            !cbor_validate_ui_rgba(data + color.start, color.end - color.start))) return 0;
+    }
+    return 1;
+}
+
+static int cbor_validate_ui_style_table(const uint8_t *payload, size_t length)
+{
+    cbor_item styles;
+    int present;
+    cbor_cursor cursor;
+    uint8_t major;
+    uint64_t roles;
+    uint64_t index;
+    if (length > 32768u ||
+        !cbor_find_field(payload, length, "styles", &styles, &present) ||
+        !present || styles.major != CBOR_MAJOR_MAP) return 0;
+    cursor.data = payload + styles.start;
+    cursor.length = styles.end - styles.start;
+    cursor.offset = 0u;
+    if (!cbor_read_head(&cursor, &major, &roles) || major != CBOR_MAJOR_MAP || roles > 256u)
+        return 0;
+    for (index = 0u; index < roles; index++) {
+        cbor_item key;
+        cbor_item value;
+        const uint8_t *role;
+        size_t role_length;
+        if (!cbor_skip(&cursor, 1u, &key) ||
+            !cbor_item_text_view(cursor.data, cursor.length, &key, &role, &role_length) ||
+            !ui_role_id_valid(role, role_length) ||
+            !cbor_skip(&cursor, 1u, &value) || value.major != CBOR_MAJOR_MAP ||
+            !cbor_validate_ui_style_role(cursor.data + value.start, value.end - value.start))
+            return 0;
+    }
+    return cursor.offset == cursor.length;
+}
+
+static int cbor_validate_ui_action(const uint8_t *data, size_t length)
+{
+    cbor_item arguments;
+    int present;
+    if (!cbor_field_text_nonempty(data, length, "command", 128u) ||
+        !cbor_find_field(data, length, "arguments", &arguments, &present)) return 0;
+    return !present || (arguments.major == CBOR_MAJOR_MAP && arguments.end - arguments.start <= 32768u);
+}
+
+static int cbor_validate_ui_tree_node(const uint8_t *data, size_t length,
+                                      unsigned depth, size_t *nodes, ui_id_set *ids);
+
+static int cbor_validate_ui_tree_nodes(const uint8_t *data, size_t length,
+                                       unsigned depth, size_t *nodes, ui_id_set *ids)
+{
+    cbor_cursor cursor = { data, length, 0u };
+    uint8_t major;
+    uint64_t count;
+    uint64_t index;
+    if (depth > 16u || !cbor_read_head(&cursor, &major, &count) ||
+        major != CBOR_MAJOR_ARRAY || count > 128u) return 0;
+    for (index = 0u; index < count; index++) {
+        cbor_item node;
+        if (!cbor_skip(&cursor, 1u, &node) || node.major != CBOR_MAJOR_MAP ||
+            !cbor_validate_ui_tree_node(cursor.data + node.start, node.end - node.start,
+                                        depth + 1u, nodes, ids)) return 0;
+    }
+    return cursor.offset == cursor.length;
+}
+
+static int cbor_validate_ui_tree_node(const uint8_t *data, size_t length,
+                                      unsigned depth, size_t *nodes, ui_id_set *ids)
+{
+    cbor_item children;
+    cbor_item action;
+    int children_present;
+    int action_present;
+    if (depth > 16u || *nodes >= 128u ||
+        !cbor_validate_ui_id_field(data, length, "id", ids) ||
+        !cbor_field_text_nonempty(data, length, "label", 16384u) ||
+        !cbor_optional_bool(data, length, "expanded") ||
+        !cbor_optional_bool(data, length, "enabled") ||
+        !cbor_find_field(data, length, "activate", &action, &action_present)) return 0;
+    if (action_present && (action.major != CBOR_MAJOR_MAP ||
+        !cbor_validate_ui_action(data + action.start, action.end - action.start))) return 0;
+    (*nodes)++;
+    if (!cbor_find_field(data, length, "children", &children, &children_present)) return 0;
+    if (children_present && (children.major != CBOR_MAJOR_ARRAY ||
+        !cbor_validate_ui_tree_nodes(data + children.start, children.end - children.start,
+                                     depth + 1u, nodes, ids))) return 0;
+    return 1;
+}
+
+static int cbor_validate_ui_widget(const uint8_t *data, size_t length,
+                                   size_t *widgets, ui_id_set *widget_ids)
+{
+    static const char *const supported_kinds[] = {
+        "label", "text", "list", "tree", "button", "input"
+    };
+    const uint8_t *kind = NULL;
+    size_t kind_length = 0u;
+    cbor_item item;
+    int present;
+    size_t i;
+    int known = 0;
+    if (*widgets >= 128u ||
+        !cbor_validate_ui_id_field(data, length, "id", widget_ids) ||
+        !cbor_field_text_value(data, length, "kind", &kind, &kind_length) ||
+        kind_length == 0u || kind_length > 64u ||
+        !cbor_optional_bool(data, length, "enabled") ||
+        !cbor_optional_bool(data, length, "visible") ||
+        !cbor_optional_text(data, length, "accessible_label", 16384u, 0)) return 0;
+    (*widgets)++;
+    for (i = 0u; i < sizeof(supported_kinds) / sizeof(supported_kinds[0]); i++) {
+        size_t candidate_length = strlen(supported_kinds[i]);
+        if (kind_length == candidate_length && memcmp(kind, supported_kinds[i], kind_length) == 0) {
+            known = 1;
+            break;
+        }
+    }
+    if (!known) {
+        return cbor_optional_text(data, length, "label", 16384u, 0) &&
+               cbor_optional_text(data, length, "text", 16384u, 0);
+    }
+    if (kind_length == 5u && memcmp(kind, "label", 5u) == 0) {
+        return cbor_field_text_value(data, length, "text", &kind, &kind_length) &&
+               kind_length <= 16384u && cbor_optional_text(data, length, "role", 64u, 0);
+    }
+    if (kind_length == 4u && memcmp(kind, "text", 4u) == 0) {
+        cbor_item runs;
+        cbor_cursor cursor;
+        uint8_t array_major;
+        uint64_t count;
+        uint64_t index;
+        if (!cbor_find_field(data, length, "runs", &runs, &present) ||
+            !present || runs.major != CBOR_MAJOR_ARRAY) return 0;
+        cursor.data = data + runs.start;
+        cursor.length = runs.end - runs.start;
+        cursor.offset = 0u;
+        if (!cbor_read_head(&cursor, &array_major, &count) ||
+            array_major != CBOR_MAJOR_ARRAY || count > 128u) return 0;
+        for (index = 0u; index < count; index++) {
+            cbor_item run;
+            cbor_item role;
+            int role_present;
+            if (!cbor_skip(&cursor, 1u, &run) || run.major != CBOR_MAJOR_MAP ||
+                !cbor_field_text_value(cursor.data + run.start, run.end - run.start,
+                                       "text", &kind, &kind_length) ||
+                kind_length > 16384u ||
+                !cbor_find_field(cursor.data + run.start, run.end - run.start,
+                                 "role", &role, &role_present) ||
+                (role_present && role.major != CBOR_MAJOR_TEXT &&
+                 !(role.major == CBOR_MAJOR_SIMPLE && role.value == CBOR_NULL))) return 0;
+        }
+        return cursor.offset == cursor.length;
+    }
+    if (kind_length == 4u && memcmp(kind, "list", 4u) == 0) {
+        cbor_item items;
+        cbor_cursor cursor;
+        uint8_t array_major;
+        uint64_t count;
+        uint64_t index;
+        ui_id_set ids = {0};
+        if (!cbor_find_field(data, length, "items", &items, &present) ||
+            !present || items.major != CBOR_MAJOR_ARRAY) return 0;
+        cursor.data = data + items.start;
+        cursor.length = items.end - items.start;
+        cursor.offset = 0u;
+        if (!cbor_read_head(&cursor, &array_major, &count) ||
+            array_major != CBOR_MAJOR_ARRAY || count > 128u) return 0;
+        for (index = 0u; index < count; index++) {
+            cbor_item entry;
+            cbor_item action;
+            int action_present;
+            if (!cbor_skip(&cursor, 1u, &entry) || entry.major != CBOR_MAJOR_MAP ||
+                !cbor_validate_ui_id_field(cursor.data + entry.start, entry.end - entry.start,
+                                           "id", &ids) ||
+                !cbor_field_text_nonempty(cursor.data + entry.start, entry.end - entry.start,
+                                          "label", 16384u) ||
+                !cbor_optional_text(cursor.data + entry.start, entry.end - entry.start,
+                                    "detail", 16384u, 0) ||
+                !cbor_optional_bool(cursor.data + entry.start, entry.end - entry.start, "enabled") ||
+                !cbor_find_field(cursor.data + entry.start, entry.end - entry.start,
+                                 "activate", &action, &action_present)) return 0;
+            if (action_present && (action.major != CBOR_MAJOR_MAP ||
+                !cbor_validate_ui_action(cursor.data + entry.start + action.start,
+                                         action.end - action.start))) return 0;
+        }
+        if (cursor.offset != cursor.length ||
+            !cbor_optional_text(data, length, "selected_id", 128u, 1)) return 0;
+        return 1;
+    }
+    if (kind_length == 4u && memcmp(kind, "tree", 4u) == 0) {
+        cbor_item nodes;
+        size_t node_count = 0u;
+        ui_id_set node_ids = {0};
+        if (!cbor_find_field(data, length, "nodes", &nodes, &present) ||
+            !present || nodes.major != CBOR_MAJOR_ARRAY) return 0;
+        return cbor_validate_ui_tree_nodes(data + nodes.start, nodes.end - nodes.start,
+                                           1u, &node_count, &node_ids);
+    }
+    if (kind_length == 6u && memcmp(kind, "button", 6u) == 0) {
+        cbor_item action;
+        return cbor_field_text_nonempty(data, length, "label", 16384u) &&
+               cbor_find_field(data, length, "activate", &action, &present) &&
+               present && action.major == CBOR_MAJOR_MAP &&
+               cbor_validate_ui_action(data + action.start, action.end - action.start);
+    }
+    if (kind_length == 5u && memcmp(kind, "input", 5u) == 0) {
+        cbor_item submit;
+        uint64_t max_bytes = 4096u;
+        if (!cbor_field_text_value(data, length, "value", &kind, &kind_length) ||
+            kind_length > 16384u ||
+            !cbor_optional_text(data, length, "placeholder", 16384u, 0) ||
+            !cbor_optional_bool(data, length, "multiline") ||
+            !cbor_find_field(data, length, "max_bytes", &item, &present)) return 0;
+        if (present && (!cbor_field_uint(data, length, "max_bytes", &max_bytes) ||
+            max_bytes > 16384u)) return 0;
+        if (!cbor_find_field(data, length, "submit", &submit, &present) ||
+            !present || submit.major != CBOR_MAJOR_MAP ||
+            !cbor_validate_ui_action(data + submit.start, submit.end - submit.start)) return 0;
+        {
+            cbor_item arguments;
+            int arguments_present;
+            if (cbor_find_field(data + submit.start, submit.end - submit.start,
+                                "arguments", &arguments, &arguments_present) && arguments_present) {
+                cbor_item existing;
+                int value_present;
+                if (!cbor_find_field(data + arguments.start, arguments.end - arguments.start,
+                                     "value", &existing, &value_present)) return 0;
+                if (value_present) return 0;
+            }
+        }
+        return 1;
+    }
+    return 1;
+}
+
+static int cbor_validate_ui_widgets(const uint8_t *data, size_t length,
+                                    size_t *out_widgets)
+{
+    cbor_cursor cursor = { data, length, 0u };
+    uint8_t major;
+    uint64_t count;
+    uint64_t index;
+    size_t widgets = 0u;
+    ui_id_set widget_ids = {0};
+    if (!cbor_read_head(&cursor, &major, &count) ||
+        major != CBOR_MAJOR_ARRAY || count > 128u) return 0;
+    for (index = 0u; index < count; index++) {
+        cbor_item widget;
+        if (!cbor_skip(&cursor, 1u, &widget) || widget.major != CBOR_MAJOR_MAP ||
+            !cbor_validate_ui_widget(cursor.data + widget.start, widget.end - widget.start,
+                                     &widgets, &widget_ids)) return 0;
+    }
+    if (cursor.offset != cursor.length) return 0;
+    if (out_widgets != NULL) *out_widgets = widgets;
+    return 1;
+}
+
+static int cbor_validate_ui_panel(const uint8_t *payload, size_t length,
+                                  const char *outer_id, size_t outer_id_length,
+                                  size_t *out_widgets)
+{
+    const uint8_t *panel_id = NULL;
+    size_t panel_id_length = 0u;
+    const uint8_t *kind = NULL;
+    size_t kind_length = 0u;
+    cbor_item item;
+    int present;
+    if (length > 131072u ||
+        !cbor_field_text_value(payload, length, "kind", &kind, &kind_length) ||
+        kind_length == 0u || kind_length > 64u ||
+        !cbor_field_text_value(payload, length, "title", &panel_id, &panel_id_length) ||
+        panel_id_length > 16384u ||
+        !cbor_optional_bool(payload, length, "visible") ||
+        !cbor_optional_bool(payload, length, "focusable") ||
+        !cbor_optional_bool(payload, length, "scrollable") ||
+        !cbor_optional_text(payload, length, "selected_widget_id", 128u, 1)) return 0;
+    if (cbor_find_field(payload, length, "id", &item, &present) && present) {
+        if (!cbor_item_text_view(payload, length, &item, &panel_id, &panel_id_length) ||
+            panel_id_length != outer_id_length ||
+            memcmp(panel_id, outer_id, outer_id_length) != 0) return 0;
+    }
+    if (!cbor_find_field(payload, length, "widgets", &item, &present) ||
+        !present || item.major != CBOR_MAJOR_ARRAY ||
+        !cbor_validate_ui_widgets(payload + item.start, item.end - item.start, out_widgets)) return 0;
+    return 1;
+}
+
+static int cbor_validate_ui_prompt(const uint8_t *payload, size_t length,
+                                   size_t *out_widgets)
+{
+    cbor_item widgets;
+    cbor_item cancel;
+    int present;
+    if (length > 131072u ||
+        !cbor_field_text_nonempty(payload, length, "id", 128u) ||
+        !cbor_field_text_value(payload, length, "title", (const uint8_t **)&widgets, (size_t *)&present)) {
+        /* title is allowed to be empty; validate it separately below. */
+        if (!cbor_optional_text(payload, length, "title", 16384u, 0)) return 0;
+    }
+    if (!cbor_optional_text(payload, length, "message", 16384u, 0) ||
+        !cbor_optional_bool(payload, length, "visible") ||
+        !cbor_find_field(payload, length, "widgets", &widgets, &present) ||
+        !present || widgets.major != CBOR_MAJOR_ARRAY ||
+        !cbor_validate_ui_widgets(payload + widgets.start, widgets.end - widgets.start, out_widgets) ||
+        !cbor_find_field(payload, length, "cancel", &cancel, &present)) return 0;
+    if (present && cancel.major != CBOR_MAJOR_SIMPLE && cancel.major != CBOR_MAJOR_MAP) return 0;
+    if (present && cancel.major == CBOR_MAJOR_MAP &&
+        !cbor_validate_ui_action(payload + cancel.start, cancel.end - cancel.start)) return 0;
+    if (present && cancel.major == CBOR_MAJOR_SIMPLE && cancel.value != CBOR_NULL) return 0;
+    return 1;
+}
+
+static int cbor_validate_ui_style_table_message(const uint8_t *payload, size_t length)
+{
+    return cbor_field_uint(payload, length, "revision", &(uint64_t){0u}) &&
+           cbor_validate_ui_style_table(payload, length);
+}
+
+static int cbor_validate_ui_panel_message(const uint8_t *payload, size_t length,
+                                          size_t *out_widgets)
+{
+    const uint8_t *panel_id;
+    size_t panel_id_length;
+    cbor_item panel;
+    int present;
+    if (!cbor_field_text_value(payload, length, "panel_id", &panel_id, &panel_id_length) ||
+        panel_id_length == 0u || panel_id_length > 128u ||
+        !cbor_find_field(payload, length, "panel", &panel, &present)) return 0;
+    if (panel.major == CBOR_MAJOR_SIMPLE && panel.value == CBOR_NULL) {
+        if (out_widgets != NULL) *out_widgets = 0u;
+        return 1;
+    }
+    if (panel.major != CBOR_MAJOR_MAP) return 0;
+    return cbor_validate_ui_panel(payload + panel.start, panel.end - panel.start,
+                                  (const char *)panel_id, panel_id_length, out_widgets);
+}
+
+static int cbor_validate_ui_prompt_message(const uint8_t *payload, size_t length,
+                                           size_t *out_widgets)
+{
+    cbor_item prompt;
+    int present;
+    if (!cbor_find_field(payload, length, "prompt", &prompt, &present)) return 0;
+    if (prompt.major == CBOR_MAJOR_SIMPLE && prompt.value == CBOR_NULL) {
+        if (out_widgets != NULL) *out_widgets = 0u;
+        return 1;
+    }
+    if (prompt.major != CBOR_MAJOR_MAP) return 0;
+    return cbor_validate_ui_prompt(payload + prompt.start, prompt.end - prompt.start, out_widgets);
+}
+
 static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
                                             const uint8_t *payload,
                                             size_t payload_length)
