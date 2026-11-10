@@ -669,20 +669,20 @@ static void test_ui_presentation_batch(void)
 {
     static const uint8_t panel_tree[] = {
         0xa3u,
-        0x68u, 'r','e','v','i','s','i','o','n', 0x03u,
+        0x65u, 'p','a','n','e','l', 0xf6u,
         0x68u, 'p','a','n','e','l','_','i','d', 0x64u, 't','r','e','e',
-        0x65u, 'p','a','n','e','l', 0xf6u
+        0x68u, 'r','e','v','i','s','i','o','n', 0x03u
     };
     static const uint8_t panel_search[] = {
         0xa3u,
-        0x68u, 'r','e','v','i','s','i','o','n', 0x03u,
+        0x65u, 'p','a','n','e','l', 0xf6u,
         0x68u, 'p','a','n','e','l','_','i','d', 0x66u, 's','e','a','r','c','h',
-        0x65u, 'p','a','n','e','l', 0xf6u
+        0x68u, 'r','e','v','i','s','i','o','n', 0x03u
     };
     static const uint8_t prompt_clear[] = {
         0xa2u,
-        0x68u, 'r','e','v','i','s','i','o','n', 0x03u,
-        0x66u, 'p','r','o','m','p','t', 0xf6u
+        0x66u, 'p','r','o','m','p','t', 0xf6u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x03u
     };
     cdin_protocol_message_view messages[17];
     size_t index;
