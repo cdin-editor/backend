@@ -93,6 +93,10 @@ line anchor or alter `scroll_anchor`.
 
 ### `read_lines()` contract
 
+The accepted optional `byte-anchored-lines/1` extension adds `anchor_byte` to a request and `first_byte` to negotiated responses. Backend resolves the anchor, computes the actual first line and reads its byte window under one Kernel Snapshot. A peer that negotiated the capability receives `first_byte` even when it uses the `first_line` fallback.
+
+
+
 ```lua
 host.documents:read_lines(handle, {
   first_line = 120,       -- required zero-based compatibility line index
@@ -203,9 +207,7 @@ Backend completion queue, but must never enter the Lua state.
 
 ## 8. Current verification boundary
 
-Protocol-only and service tests pass in this workspace. The actual Runtime
-repository remains a separate, read-only inspected source tree; the companion
-patch must be applied and reviewed there. A production build with real Lua 5.4
+Protocol-only and service tests pass in this workspace. The Runtime repository now has a companion implementation branch for the accepted byte-anchor API; its pull request and exact CI result are tracked alongside this Backend change. A production build with real Lua 5.4
 development headers and the installed Kernel package, plus live Runtime/Kernel
 integration tests, has not yet been executed. The OS transport adapters are
 also not part of this source snapshot.
