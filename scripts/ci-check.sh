@@ -10,3 +10,5 @@ bash scripts/install-deps.sh
 make all integration
 python3 scripts/check-pane-splitter-vectors.py
 bash scripts/check-boundaries.sh
+bash scripts/test-installed-package.sh
+python3 scripts/test-release-metadata.py

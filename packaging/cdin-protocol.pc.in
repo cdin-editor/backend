@@ -1,0 +1,10 @@
+prefix=${pcfiledir}/../..
+exec_prefix=${prefix}
+libdir=${exec_prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: cdin-protocol
+Description: Deterministic CBOR Frontend Protocol codec from CDIN Backend
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lcdin_protocol
+Cflags: -I${includedir}

@@ -1,0 +1,11 @@
+prefix=${pcfiledir}/../..
+exec_prefix=${prefix}
+libdir=${exec_prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: cdin-backend
+Description: CDIN Backend host library and Frontend Protocol services
+Version: @PROJECT_VERSION@
+Requires.private: cdin-backend-services, cdin-protocol, cdin-kernel >= @CDIN_KERNEL_MIN_VERSION@, m-mdy-m-log >= 0.1.0, lua5.4
+Libs: -L${libdir} -lcdin_backend
+Cflags: -I${includedir}

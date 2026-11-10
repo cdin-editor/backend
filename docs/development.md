@@ -62,6 +62,19 @@ The static metadata includes the Kernel's private `m-mdy-m/log.c` dependency.
 Backend must call the Kernel logger API and must not include or link logger
 internals independently.
 
+## Artifact-first consumer packages
+
+The release workflow publishes target-specific install prefixes for the
+Backend, Protocol and independent services libraries. These archives do not
+contain Kernel, logger, Lua, Runtime or Registry. The Composition Root
+provisions Kernel ABI, the independently versioned m-mdy-m/log.c SDK and PUC
+Lua 5.4 as separate environment contracts.
+
+Read [Artifact packages](artifact-packages.md) for the target ABI matrix,
+CMake/pkg-config consumer examples, external contracts and immutable Registry
+metadata publication procedure. A binary package is published only after its
+five target builds and downloaded-package consumer tests pass.
+
 ## 3. Build the host and reusable services
 
 Build only the reusable services, without installing Kernel:

@@ -44,6 +44,12 @@ command = ["bash", "scripts/package-release.sh"]
 depends_on = ["check"]
 timeout_seconds = 600
 
+[tasks.package-binary]
+description = "Build one native, install-ready Backend prefix for an explicit release target"
+command = ["bash", "scripts/package-binary.sh"]
+depends_on = ["check"]
+timeout_seconds = 900
+
 [tasks.stress]
 description = "Exercise bounded queue pressure, completion accounting and resident memory limits"
 command = ["make", "stress"]
