@@ -146,31 +146,25 @@ static void test_semantic_schema_constraints(void)
 {
     static const uint8_t ui_style_rgba_valid[] = {
         0xa2u,
-        0x68u, 'r','e','v','i','s','i','o','n', 0x03u,
         0x66u, 's','t','y','l','e','s', 0xa1u,
             0x66u, 'n','o','r','m','a','l', 0xa1u,
                 0x6au, 'f','o','r','e','g','r','o','u','n','d', 0xa4u,
-                    0x61u, 'r', 0x18u, 220u,
-                    0x61u, 'g', 0x18u, 224u,
+                    0x61u, 'a', 0x18u, 255u,
                     0x61u, 'b', 0x18u, 230u,
-                    0x61u, 'a', 0x18u, 255u
+                    0x61u, 'g', 0x18u, 224u,
+                    0x61u, 'r', 0x18u, 220u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x03u
     };
     static const uint8_t ui_style_rgba_invalid[] = {
         0xa2u,
-        0x68u, 'r','e','v','i','s','i','o','n', 0x03u,
         0x66u, 's','t','y','l','e','s', 0xa1u,
             0x66u, 'n','o','r','m','a','l', 0xa1u,
                 0x6au, 'f','o','r','e','g','r','o','u','n','d', 0xa4u,
-                    0x61u, 'r', 0x19u, 0x01u, 0x00u,
-                    0x61u, 'g', 0x00u,
+                    0x61u, 'a', 0x18u, 255u,
                     0x61u, 'b', 0x00u,
-                    0x61u, 'a', 0x18u, 255u
-    };
-    static const uint8_t ui_options_empty[] = {
-        0xa3u,
-        0x65u, 't','h','e','m','e', 0x64u, 'd','a','r','k',
-        0x67u, 'o','p','t','i','o','n','s', 0xa0u,
-        0x68u, 'r','e','v','i','s','i','o','n', 0x01u
+                    0x61u, 'g', 0x00u,
+                    0x61u, 'r', 0x19u, 0x01u, 0x00u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x03u
     };
     static const uint8_t ui_options_tab_width[] = {
         0xa3u,
