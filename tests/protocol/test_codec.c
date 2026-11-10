@@ -144,6 +144,28 @@ static void test_ui_flush_scopes(void)
 
 static void test_semantic_schema_constraints(void)
 {
+    static const uint8_t ui_style_rgba_valid[] = {
+        0xa2u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x03u,
+        0x66u, 's','t','y','l','e','s', 0xa1u,
+            0x66u, 'n','o','r','m','a','l', 0xa1u,
+                0x6au, 'f','o','r','e','g','r','o','u','n','d', 0xa4u,
+                    0x61u, 'r', 0x18u, 220u,
+                    0x61u, 'g', 0x18u, 224u,
+                    0x61u, 'b', 0x18u, 230u,
+                    0x61u, 'a', 0x18u, 255u
+    };
+    static const uint8_t ui_style_rgba_invalid[] = {
+        0xa2u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x03u,
+        0x66u, 's','t','y','l','e','s', 0xa1u,
+            0x66u, 'n','o','r','m','a','l', 0xa1u,
+                0x6au, 'f','o','r','e','g','r','o','u','n','d', 0xa4u,
+                    0x61u, 'r', 0x19u, 0x01u, 0x00u,
+                    0x61u, 'g', 0x00u,
+                    0x61u, 'b', 0x00u,
+                    0x61u, 'a', 0x18u, 255u
+    };
     static const uint8_t ui_options_empty[] = {
         0xa3u,
         0x65u, 't','h','e','m','e', 0x64u, 'd','a','r','k',
@@ -243,6 +265,10 @@ static void test_semantic_schema_constraints(void)
 
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_UI_OPTIONS, ui_options_empty,
                                           sizeof(ui_options_empty)) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_UI_STYLE_TABLE, ui_style_rgba_valid,
+                                          sizeof(ui_style_rgba_valid)) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_UI_STYLE_TABLE, ui_style_rgba_invalid,
+                                          sizeof(ui_style_rgba_invalid)) == CDIN_PROTOCOL_INVALID_SCHEMA);
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_UI_OPTIONS, ui_options_tab_width,
                                           sizeof(ui_options_tab_width)) == CDIN_PROTOCOL_INVALID_SCHEMA);
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_UI_OPTIONS, ui_options_missing_map,
