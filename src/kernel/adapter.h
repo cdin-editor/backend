@@ -48,6 +48,8 @@ typedef struct cdin_host_lines_result {
     size_t count;
     uint64_t version;
     uint64_t total_lines;
+    uint64_t first_line;
+    uint64_t first_byte;
     cdin_host_error_details details;
 } cdin_host_lines_result;
 typedef struct cdin_host_line_position {
@@ -107,6 +109,8 @@ void cdin_kernel_host_read_result_free(cdin_host_read_result *result);
 cdin_backend_status cdin_kernel_host_document_read_lines(cdin_kernel_host *host,
                                                           cdin_host_handle handle,
                                                           uint64_t first_line,
+                                                          int has_anchor_byte,
+                                                          uint64_t anchor_byte,
                                                           size_t line_count,
                                                           uint64_t expected_version,
                                                           size_t max_bytes,
