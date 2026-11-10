@@ -82,6 +82,32 @@ static void test_schema_rejection(void)
     assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_INPUT_TEXT, duplicate, sizeof(duplicate)) == CDIN_PROTOCOL_INVALID_SCHEMA);
 }
 
+static void test_byte_anchored_line_window_schemas(void)
+{
+    static const uint8_t request_with_anchor[] = {
+        0xa5u,
+        0x67u, 'v','e','r','s','i','o','n', 0x00u,
+        0x67u, 'v','i','e','w','_','i','d', 0x61u, 'v',
+        0x6au, 'f','i','r','s','t','_','l','i','n','e', 0x00u,
+        0x6au, 'l','i','n','e','_','c','o','u','n','t', 0x01u,
+        0x6bu, 'a','n','c','h','o','r','_','b','y','t','e', 0x04u
+    };
+    static const uint8_t response_with_first_byte[] = {
+        0xa6u,
+        0x65u, 'l','i','n','e','s', 0x81u, 0xa1u,
+            0x65u, 'b','y','t','e','s', 0x42u, 'b','\n',
+        0x67u, 'v','e','r','s','i','o','n', 0x00u,
+        0x67u, 'v','i','e','w','_','i','d', 0x61u, 'v',
+        0x6au, 'f','i','r','s','t','_','b','y','t','e', 0x04u,
+        0x6au, 'f','i','r','s','t','_','l','i','n','e', 0x01u,
+        0x6bu, 't','o','t','a','l','_','l','i','n','e','s', 0x03u
+    };
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_VIEW_REQUEST_LINES,
+        request_with_anchor, sizeof(request_with_anchor)) == CDIN_PROTOCOL_OK);
+    assert(cdin_protocol_validate_payload(CDIN_PROTOCOL_VIEW_LINES,
+        response_with_first_byte, sizeof(response_with_first_byte)) == CDIN_PROTOCOL_OK);
+}
+
 static void test_ui_flush_scopes(void)
 {
     static const uint8_t response_flush[] = {
