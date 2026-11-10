@@ -1016,7 +1016,7 @@ static int cbor_validate_ui_tree_node(const uint8_t *data, size_t length,
     int action_present;
     if (depth > 16u || *nodes >= 128u ||
         !cbor_validate_ui_id_field(data, length, "id", ids) ||
-        !cbor_optional_text(data, length, "label", 16384u, 0) ||
+        !cbor_field_text_value(data, length, "label", &(const uint8_t *){0}, &(size_t){0}) ||
         !cbor_optional_bool(data, length, "expanded") ||
         !cbor_optional_bool(data, length, "enabled") ||
         !cbor_find_field(data, length, "activate", &action, &action_present)) return 0;
@@ -1087,8 +1087,8 @@ static int cbor_validate_ui_widget(const uint8_t *data, size_t length,
                                        "text", &kind, &kind_length) ||
                 kind_length > 16384u ||
                 !cbor_find_field(cursor.data + run.start, run.end - run.start,
-                                 "role", &role, &role_present) ||
-                (role_present && role.major != CBOR_MAJOR_TEXT &&
+                                 "role", &role, &role_present) || !role_present ||
+                (role.major != CBOR_MAJOR_TEXT &&
                  !(role.major == CBOR_MAJOR_SIMPLE && role.value == CBOR_NULL))) return 0;
         }
         return cursor.offset == cursor.length;
@@ -1114,8 +1114,8 @@ static int cbor_validate_ui_widget(const uint8_t *data, size_t length,
             if (!cbor_skip(&cursor, 1u, &entry) || entry.major != CBOR_MAJOR_MAP ||
                 !cbor_validate_ui_id_field(cursor.data + entry.start, entry.end - entry.start,
                                            "id", &ids) ||
-                !cbor_optional_text(cursor.data + entry.start, entry.end - entry.start,
-                                    "label", 16384u, 0) ||
+                !cbor_field_text_value(cursor.data + entry.start, entry.end - entry.start,
+                                       "label", &(const uint8_t *){0}, &(size_t){0}) ||
                 !cbor_optional_text(cursor.data + entry.start, entry.end - entry.start,
                                     "detail", 16384u, 0) ||
                 !cbor_optional_bool(cursor.data + entry.start, entry.end - entry.start, "enabled") ||
@@ -1166,7 +1166,8 @@ static int cbor_validate_ui_widget(const uint8_t *data, size_t length,
                                 "arguments", &arguments, &arguments_present) && arguments_present) {
                 cbor_item existing;
                 int value_present;
-                if (!cbor_find_field(data + arguments.start, arguments.end - arguments.start,
+                if (!cbor_find_field(data + submit.start + arguments.start,
+                                     arguments.end - arguments.start,
                                      "value", &existing, &value_present)) return 0;
                 if (value_present) return 0;
             }
