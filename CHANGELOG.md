@@ -30,10 +30,7 @@
 > not itself create a tag, release or Catalog update.
 
 
-### Additional changes
-
-the Registry Catalog and CDIN Product Definitions. These are separate
-  changes after the release assets have been verified.
+### Implemented follow-on changes
 
 - Correct the Protocol server regression test to expect the reattach role notification at the next per-connection frame sequence after the earlier promotion event.
 - Add an optional, snapshot-pinned Host document line-lookup bridge: callers provide document identity, byte offset and expected document version, and receive a versioned line result without exposing Kernel handles to Runtime.
