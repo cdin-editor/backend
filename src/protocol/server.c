@@ -869,6 +869,23 @@ cdin_backend_status cdin_protocol_receive(cdin_protocol_client *client,
                           client->id, CDIN_BACKEND_INVALID_ARGUMENT, (uint64_t)message->type);
         return CDIN_BACKEND_INVALID_ARGUMENT;
     }
+    if (message->type == CDIN_PROTOCOL_VIEW_REQUEST_LINES) {
+        uint64_t anchor_byte = 0u;
+        cdin_protocol_status anchor_status = cdin_protocol_payload_get_uint(
+            message->payload, message->payload_length, "anchor_byte", &anchor_byte);
+        if (anchor_status == CDIN_PROTOCOL_OK &&
+            !cdin_protocol_client_has_capability(client, CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES)) {
+            cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN,
+                              "byte_anchor_capability_rejected", client->id,
+                              CDIN_BACKEND_UNSUPPORTED, anchor_byte);
+            return CDIN_BACKEND_UNSUPPORTED;
+        }
+        if (anchor_status != CDIN_PROTOCOL_OK &&
+            anchor_status != CDIN_PROTOCOL_INVALID_SCHEMA &&
+            anchor_status != CDIN_PROTOCOL_UNSUPPORTED) {
+            return CDIN_BACKEND_INVALID_ARGUMENT;
+        }
+    }
     if (is_ime_cancel &&
         !ime_frontend_cancel_reason_valid(message->payload, message->payload_length)) {
         cdin_protocol_log(client->server, CDIN_BACKEND_LOG_WARN, "ime_cancel_reason_rejected",
