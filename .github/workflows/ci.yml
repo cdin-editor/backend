@@ -117,15 +117,7 @@ jobs:
           BACKEND_TARGET_RUNNER="github-actions-$target_os-$target_arch" \
           PIPELINE_RELEASE_TAG=v1.2.1 \
             bash scripts/package-binary.sh
-          # Simulate the native Windows runner.temp path used after
-          # actions/download-artifact in the shared release workflow.
-          artifact_test_dir="${RUNNER_TEMP}/release-artifact-test"
-          artifact_test_dir_posix="$(cygpath -u "$artifact_test_dir")"
-          mkdir -p "$artifact_test_dir_posix"
-          archive="$(find dist -maxdepth 1 -type f -name 'cdin-backend-*.tar.gz' ! -name '*-source.tar.gz' -print | sort | head -n 1)"
-          test -n "$archive"
-          cp "$archive" "${archive}.sha256" "$artifact_test_dir_posix/"
-          PIPELINE_ARTIFACT_TEST_DIR="$artifact_test_dir" bash scripts/test-binary-package.sh
+          bash scripts/test-binary-package.sh
       - if: matrix.os == 'windows-latest'
         name: Run Backend, Kernel and extension resolver integration
         shell: msys2 {0}
@@ -144,4 +136,12 @@ jobs:
           BACKEND_TARGET_RUNNER=github-actions-windows-ucrt64 \
           PIPELINE_RELEASE_TAG=v1.2.1 \
             bash scripts/package-binary.sh
-          bash scripts/test-binary-package.sh
+          # Simulate the native Windows runner.temp path used after
+          # actions/download-artifact in the shared release workflow.
+          artifact_test_dir="${RUNNER_TEMP}/release-artifact-test"
+          artifact_test_dir_posix="$(cygpath -u "$artifact_test_dir")"
+          mkdir -p "$artifact_test_dir_posix"
+          archive="$(find dist -maxdepth 1 -type f -name 'cdin-backend-*.tar.gz' ! -name '*-source.tar.gz' -print | sort | head -n 1)"
+          test -n "$archive"
+          cp "$archive" "${archive}.sha256" "$artifact_test_dir_posix/"
+          PIPELINE_ARTIFACT_TEST_DIR="$artifact_test_dir" bash scripts/test-binary-package.sh
