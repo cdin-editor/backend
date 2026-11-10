@@ -1423,6 +1423,25 @@ static int cbor_validate_protocol_semantics(cdin_protocol_message_type type,
     case CDIN_PROTOCOL_UI_OPTIONS:
         if (!cbor_validate_ui_options(payload, payload_length)) return 0;
         break;
+    case CDIN_PROTOCOL_UI_STYLE_TABLE:
+        if (!cbor_validate_ui_style_table_message(payload, payload_length)) return 0;
+        break;
+    case CDIN_PROTOCOL_UI_PANEL: {
+        size_t widget_count = 0u;
+        uint64_t revision;
+        if (!cbor_field_uint(payload, payload_length, "revision", &revision) ||
+            !cbor_validate_ui_panel_message(payload, payload_length, &widget_count) ||
+            widget_count > 128u) return 0;
+        break;
+    }
+    case CDIN_PROTOCOL_UI_PROMPT: {
+        size_t widget_count = 0u;
+        uint64_t revision;
+        if (!cbor_field_uint(payload, payload_length, "revision", &revision) ||
+            !cbor_validate_ui_prompt_message(payload, payload_length, &widget_count) ||
+            widget_count > 128u) return 0;
+        break;
+    }
     case CDIN_PROTOCOL_UI_NOTIFY:
         if (!cbor_field_text_nonempty(payload, payload_length, "text", 4096u) ||
             (!cbor_field_text_equals(payload, payload_length, "level", notify_levels[0]) &&
