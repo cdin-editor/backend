@@ -1,0 +1,284 @@
+{
+  "schema_version": "1.1.0",
+  "component_id": "backend",
+  "variant": "default",
+  "version": "1.2.1",
+  "status": "active",
+  "source_units": [
+    {
+      "source_unit_id": "backend-source",
+      "repository_uri": "https://github.com/cdin-editor/backend",
+      "revision": "b6a54e43313add7e73399b040569874d30d32611"
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "backend-darwin-arm64-macos-15",
+      "kind": "native-development-package",
+      "target": {
+        "os": "darwin",
+        "architecture": "arm64",
+        "abi": "macos-15"
+      },
+      "format": "tar.gz",
+      "file_name": "cdin-backend-1.2.1-darwin-arm64-macos-15.tar.gz",
+      "uri": "https://github.com/cdin-editor/backend/releases/download/v1.2.1/cdin-backend-1.2.1-darwin-arm64-macos-15.tar.gz",
+      "sha256": "76bbc8c1985462945d789c65aca0010e5d0e3ce22e849aa82a6a05870d675c8f",
+      "size_bytes": 134524,
+      "layout": "cmake-prefix-v1",
+      "source_unit_ids": [
+        "backend-source"
+      ],
+      "build": {
+        "recipe": {
+          "source_unit_id": "backend-source",
+          "path": "scripts/package-binary.sh"
+        },
+        "toolchain": [
+          {
+            "name": "compiler",
+            "version": "Apple clang version 17.0.0 (clang-1700.0.13.5)"
+          },
+          {
+            "name": "cmake",
+            "version": "cmake version 4.4.5"
+          },
+          {
+            "name": "cdin-kernel",
+            "version": "1.2.1"
+          },
+          {
+            "name": "lua",
+            "version": "5.4.9"
+          },
+          {
+            "name": "m-mdy-m-log",
+            "version": "0.1.0"
+          }
+        ],
+        "runner": "github-actions-macos-15-arm64"
+      }
+    },
+    {
+      "artifact_id": "backend-darwin-x86-64-macos-15",
+      "kind": "native-development-package",
+      "target": {
+        "os": "darwin",
+        "architecture": "x86_64",
+        "abi": "macos-15"
+      },
+      "format": "tar.gz",
+      "file_name": "cdin-backend-1.2.1-darwin-x86-64-macos-15.tar.gz",
+      "uri": "https://github.com/cdin-editor/backend/releases/download/v1.2.1/cdin-backend-1.2.1-darwin-x86-64-macos-15.tar.gz",
+      "sha256": "11a5ad3e670691d258b83d2b0951987adf24b98b3828c36b69f1c601fa9040ce",
+      "size_bytes": 126566,
+      "layout": "cmake-prefix-v1",
+      "source_unit_ids": [
+        "backend-source"
+      ],
+      "build": {
+        "recipe": {
+          "source_unit_id": "backend-source",
+          "path": "scripts/package-binary.sh"
+        },
+        "toolchain": [
+          {
+            "name": "compiler",
+            "version": "Apple clang version 17.0.0 (clang-1700.0.13.5)"
+          },
+          {
+            "name": "cmake",
+            "version": "cmake version 4.4.2"
+          },
+          {
+            "name": "cdin-kernel",
+            "version": "1.2.1"
+          },
+          {
+            "name": "lua",
+            "version": "5.4.8"
+          },
+          {
+            "name": "m-mdy-m-log",
+            "version": "0.1.0"
+          }
+        ],
+        "runner": "github-actions-macos-15-intel"
+      }
+    },
+    {
+      "artifact_id": "backend-linux-arm64-gnu-glibc-2.39",
+      "kind": "native-development-package",
+      "target": {
+        "os": "linux",
+        "architecture": "arm64",
+        "abi": "gnu-glibc-2.39"
+      },
+      "format": "tar.gz",
+      "file_name": "cdin-backend-1.2.1-linux-arm64-gnu-glibc-2.39.tar.gz",
+      "uri": "https://github.com/cdin-editor/backend/releases/download/v1.2.1/cdin-backend-1.2.1-linux-arm64-gnu-glibc-2.39.tar.gz",
+      "sha256": "c1ac731852f7f0558fd0d82721cb78cd46b8ec456e2ac04bc17f3bffa7e8b529",
+      "size_bytes": 152590,
+      "layout": "cmake-prefix-v1",
+      "source_unit_ids": [
+        "backend-source"
+      ],
+      "build": {
+        "recipe": {
+          "source_unit_id": "backend-source",
+          "path": "scripts/package-binary.sh"
+        },
+        "toolchain": [
+          {
+            "name": "compiler",
+            "version": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0"
+          },
+          {
+            "name": "cmake",
+            "version": "cmake version 3.31.6"
+          },
+          {
+            "name": "cdin-kernel",
+            "version": "1.2.1"
+          },
+          {
+            "name": "lua",
+            "version": "5.4.6"
+          },
+          {
+            "name": "m-mdy-m-log",
+            "version": "0.1.0"
+          }
+        ],
+        "runner": "github-actions-ubuntu-24.04-arm64"
+      }
+    },
+    {
+      "artifact_id": "backend-linux-x86-64-gnu-glibc-2.39",
+      "kind": "native-development-package",
+      "target": {
+        "os": "linux",
+        "architecture": "x86_64",
+        "abi": "gnu-glibc-2.39"
+      },
+      "format": "tar.gz",
+      "file_name": "cdin-backend-1.2.1-linux-x86-64-gnu-glibc-2.39.tar.gz",
+      "uri": "https://github.com/cdin-editor/backend/releases/download/v1.2.1/cdin-backend-1.2.1-linux-x86-64-gnu-glibc-2.39.tar.gz",
+      "sha256": "2b474da05ceb4e6ba957c7f9cd581d1b8d05469325a2cdb87b8e08eb9a49d7c6",
+      "size_bytes": 152092,
+      "layout": "cmake-prefix-v1",
+      "source_unit_ids": [
+        "backend-source"
+      ],
+      "build": {
+        "recipe": {
+          "source_unit_id": "backend-source",
+          "path": "scripts/package-binary.sh"
+        },
+        "toolchain": [
+          {
+            "name": "compiler",
+            "version": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0"
+          },
+          {
+            "name": "cmake",
+            "version": "cmake version 3.31.6"
+          },
+          {
+            "name": "cdin-kernel",
+            "version": "1.2.1"
+          },
+          {
+            "name": "lua",
+            "version": "5.4.6"
+          },
+          {
+            "name": "m-mdy-m-log",
+            "version": "0.1.0"
+          }
+        ],
+        "runner": "github-actions-ubuntu-24.04"
+      }
+    },
+    {
+      "artifact_id": "backend-windows-x86-64-windows-ucrt64",
+      "kind": "native-development-package",
+      "target": {
+        "os": "windows",
+        "architecture": "x86_64",
+        "abi": "windows-ucrt64"
+      },
+      "format": "tar.gz",
+      "file_name": "cdin-backend-1.2.1-windows-x86-64-windows-ucrt64.tar.gz",
+      "uri": "https://github.com/cdin-editor/backend/releases/download/v1.2.1/cdin-backend-1.2.1-windows-x86-64-windows-ucrt64.tar.gz",
+      "sha256": "e17dc9ae5324a9d35e97ed65b75344ff9a45c766247de777ce74c6cd76659c76",
+      "size_bytes": 139561,
+      "layout": "cmake-prefix-v1",
+      "source_unit_ids": [
+        "backend-source"
+      ],
+      "build": {
+        "recipe": {
+          "source_unit_id": "backend-source",
+          "path": "scripts/package-binary.sh"
+        },
+        "toolchain": [
+          {
+            "name": "compiler",
+            "version": "cc.exe (Rev4, Built by MSYS2 project) 16.2.0"
+          },
+          {
+            "name": "cmake",
+            "version": "cmake version 4.4.3"
+          },
+          {
+            "name": "cdin-kernel",
+            "version": "1.2.1"
+          },
+          {
+            "name": "lua",
+            "version": "5.4.9"
+          },
+          {
+            "name": "m-mdy-m-log",
+            "version": "0.1.0"
+          }
+        ],
+        "runner": "github-actions-windows-2025-ucrt64"
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "component_id": "runtime",
+      "variant": "default",
+      "version_constraint": ">=1.0.0-rc.2 <2.0.0"
+    }
+  ],
+  "contracts": {
+    "provides": [
+      {
+        "contract_id": "org.cdin.runtime-host-api",
+        "version": "1.0.0"
+      },
+      {
+        "contract_id": "org.cdin.frontend-protocol",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "contract_id": "org.cdin.kernel-abi",
+        "version_constraint": ">=1.1.0 <2.0.0"
+      },
+      {
+        "contract_id": "org.m-mdy-m.log-c-api",
+        "version_constraint": ">=0.1.0 <1.0.0"
+      },
+      {
+        "contract_id": "org.lua.puc-lua-c-api",
+        "version_constraint": ">=5.4.0 <5.5.0"
+      }
+    ]
+  }
+}
