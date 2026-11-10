@@ -678,6 +678,7 @@ int main(void)
     test_direction_and_roles();
     test_pane_splitter_protocol();
     test_ime_composition_protocol();
+    test_byte_anchored_line_window_schemas();
     puts("PASS protocol codec: CBOR envelope, binary paste, strict schema constraints, IME/PaneTree extensions, partial stream I/O and bounds");
     return 0;
 }
