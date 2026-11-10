@@ -44,13 +44,27 @@ def main() -> int:
     if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", tag):
         parser.error("--tag must be an immutable vMAJOR.MINOR.PATCH tag")
     version = tag[1:]
-    revision = args.source_revision or subprocess.check_output(
-        ["git", "rev-parse", "--verify", f"{tag}^{{commit}}"], text=True
-    ).strip()
-    if not re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", revision):
-        parser.error("source revision must be a full 40- or 64-character Git object ID")
+    try:
+        tag_revision = subprocess.check_output(
+            ["git", "rev-parse", "--verify", f"{tag}^{{commit}}"],
+            text=True,
+            stderr=subprocess.PIPE,
+        ).strip()
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(f"unable to resolve immutable release tag {tag!r}") from error
+    if not re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", tag_revision):
+        raise SystemExit("tag-resolved source revision must be a full Git object ID")
+    if args.source_revision and args.source_revision.lower() != tag_revision.lower():
+        raise SystemExit("provided source revision does not match the exact tag-resolved commit")
+    revision = tag_revision
 
-    descriptors = sorted(args.artifact_dir.glob("*.tar.gz.artifact.json"))
+    artifact_root = args.artifact_dir.expanduser().resolve()
+    if not artifact_root.is_dir():
+        raise SystemExit(f"artifact directory does not exist: {artifact_root}")
+    descriptors = sorted(
+        path for path in artifact_root.rglob("*.tar.gz.artifact.json")
+        if path.is_file() and not path.is_symlink()
+    )
     if len(descriptors) != len(EXPECTED_TARGETS):
         raise SystemExit(
             f"expected {len(EXPECTED_TARGETS)} artifact descriptors; found {len(descriptors)}"
@@ -100,8 +114,8 @@ def main() -> int:
             raise SystemExit(f"{descriptor_path}: invalid SHA-256 digest")
         if not isinstance(artifact.get("size_bytes"), int) or artifact["size_bytes"] <= 0:
             raise SystemExit(f"{descriptor_path}: invalid artifact byte count")
-        asset_path = args.artifact_dir / filename
-        if not asset_path.is_file():
+        asset_path = descriptor_path.parent / filename
+        if asset_path.is_symlink() or not asset_path.is_file():
             raise SystemExit(f"{descriptor_path}: missing archive {asset_path}")
         actual_digest = sha256(asset_path)
         actual_size = asset_path.stat().st_size
@@ -110,7 +124,7 @@ def main() -> int:
         if actual_size != artifact.get("size_bytes"):
             raise SystemExit(f"{descriptor_path}: size mismatch for {filename}")
         sidecar = Path(str(asset_path) + ".sha256")
-        if not sidecar.is_file():
+        if sidecar.is_symlink() or not sidecar.is_file():
             raise SystemExit(f"{descriptor_path}: missing checksum sidecar")
         sidecar_fields = sidecar.read_text(encoding="ascii").split()
         if len(sidecar_fields) < 2 or sidecar_fields[0] != actual_digest:
@@ -130,7 +144,7 @@ def main() -> int:
         raise SystemExit(f"missing required native target artifacts: {missing}")
 
     metadata = {
-        "schema_version": "1.1.0",
+        "schema_version": "1.2.0",
         "component_id": "backend",
         "variant": "default",
         "version": version,
@@ -140,6 +154,13 @@ def main() -> int:
             "repository_uri": source_uri,
             "revision": revision,
         }],
+        "publication": {
+            "provider": "github-releases-v1",
+            "repository_uri": source_uri,
+            "tag": tag,
+            "tag_commit": revision,
+            "metadata_asset_name": f"backend-{version}.json",
+        },
         "artifacts": sorted(
             artifacts,
             key=lambda item: (
@@ -174,7 +195,21 @@ def main() -> int:
             ],
         },
     }
-    output = args.output or Path("registry/releases") / f"backend-{version}.json"
+    if args.output is None:
+        parser.error("--output is required; release metadata must be an untracked Release Asset")
+    output = args.output.expanduser().resolve()
+    try:
+        output_relative = output.relative_to(artifact_root)
+    except ValueError as error:
+        raise SystemExit("metadata output must be written beneath the downloaded artifact directory") from error
+    if (
+        output.name != f"backend-{version}.json"
+        or len(output_relative.parts) != 2
+        or not output_relative.parts[0].startswith("release-build-")
+    ):
+        raise SystemExit(
+            "metadata output must use the canonical basename inside a top-level release-build-* directory"
+        )
     if output.exists():
         raise SystemExit(f"refusing to overwrite immutable release metadata: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
