@@ -305,7 +305,8 @@ static const field_rule schema_resize[] = {
 static const field_rule schema_focus[] = { RULE("focused", FIELD_BOOL) };
 static const field_rule schema_request_lines[] = {
     RULE("view_id", FIELD_TEXT), RULE("first_line", FIELD_UINT),
-    RULE("line_count", FIELD_UINT), RULE("version", FIELD_UINT)
+    RULE("line_count", FIELD_UINT), RULE("version", FIELD_UINT),
+    OPT("anchor_byte", FIELD_UINT)
 };
 static const field_rule schema_set_position[] = {
     RULE("view_id", FIELD_TEXT), RULE("anchor", FIELD_UINT),
@@ -344,7 +345,7 @@ static const field_rule schema_ui_layout[] = { RULE("revision", FIELD_UINT), RUL
 static const field_rule schema_view_lines[] = {
     RULE("view_id", FIELD_TEXT), RULE("version", FIELD_UINT),
     RULE("first_line", FIELD_UINT), RULE("lines", FIELD_ARRAY),
-    OPT("total_lines", FIELD_UINT)
+    OPT("total_lines", FIELD_UINT), OPT("first_byte", FIELD_UINT)
 };
 static const field_rule schema_view_invalidate[] = {
     RULE("view_id", FIELD_TEXT), RULE("version", FIELD_UINT), RULE("ranges", FIELD_ARRAY)
