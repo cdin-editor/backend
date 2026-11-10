@@ -846,13 +846,6 @@ static int cbor_item_text_view(const uint8_t *data, size_t length,
     return 1;
 }
 
-static int cbor_optional_field(const uint8_t *data, size_t length, const char *name,
-                               field_kind kind, int *out_present, cbor_item *out_item)
-{
-    if (!cbor_find_field(data, length, name, out_item, out_present)) return 0;
-    return !*out_present || item_matches(out_item, kind);
-}
-
 static int cbor_optional_text(const uint8_t *data, size_t length, const char *name,
                               size_t maximum, int allow_null)
 {
@@ -1140,7 +1133,10 @@ static int cbor_validate_ui_widget(const uint8_t *data, size_t length,
     }
     if (kind_length == 6u && memcmp(kind, "button", 6u) == 0) {
         cbor_item action;
-        if (!cbor_optional_text(data, length, "label", 16384u, 0) ||
+        const uint8_t *label;
+        size_t label_length;
+        if (!cbor_field_text_value(data, length, "label", &label, &label_length) ||
+            label_length > 16384u ||
             !cbor_find_field(data, length, "activate", &action, &present) ||
             !present || action.major != CBOR_MAJOR_MAP) return 0;
         return cbor_validate_ui_action(data + action.start, action.end - action.start);
