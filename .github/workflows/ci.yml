@@ -61,6 +61,14 @@ jobs:
           update: true
           install: git make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-curl mingw-w64-ucrt-x86_64-unzip mingw-w64-ucrt-x86_64-lua54 tar python
       - if: matrix.os != 'windows-latest'
+        name: Run Backend service E2E scenarios
+        shell: bash
+        run: make e2e
+      - if: matrix.os == 'windows-latest'
+        name: Run Backend service E2E scenarios
+        shell: msys2 {0}
+        run: make e2e
+      - if: matrix.os != 'windows-latest'
         name: Install pinned Kernel package
         shell: bash
         run: bash scripts/install-deps.sh
