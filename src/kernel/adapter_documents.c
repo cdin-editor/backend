@@ -232,6 +232,7 @@ cdin_backend_status cdin_kernel_host_document_read_lines(cdin_kernel_host *host,
     uint64_t total_bytes = 0u;
     uint64_t actual_first_line = first_line;
     uint64_t document_length = 0u;
+    uint64_t anchor_column = 0u;
     size_t wanted_count;
     size_t index;
     cdin_status kernel_status;
@@ -282,7 +283,7 @@ cdin_backend_status cdin_kernel_host_document_read_lines(cdin_kernel_host *host,
             goto cleanup;
         }
         kernel_status = cdin_text_line_from_offset(
-            host->kernel, source, anchor_byte, &actual_first_line, NULL);
+            host->kernel, source, anchor_byte, &actual_first_line, &anchor_column);
         if (kernel_status != CDIN_OK) {
             status = cdin_kernel_map_status(kernel_status);
             goto cleanup;
