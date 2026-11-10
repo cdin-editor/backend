@@ -1880,6 +1880,76 @@ static int cbor_read_version(const uint8_t *data, size_t length, uint32_t *major
     return 1;
 }
 
+cdin_protocol_status cdin_protocol_validate_presentation_batch(
+    const cdin_protocol_message_view *messages, size_t message_count, uint64_t revision)
+{
+    uint8_t panel_ids[16][128];
+    size_t panel_id_lengths[16];
+    size_t panel_count = 0u;
+    size_t total_widgets = 0u;
+    size_t aggregate_bytes = 0u;
+    size_t index;
+    int has_style_table = 0;
+    int has_prompt = 0;
+
+    if (messages == NULL && message_count != 0u) return CDIN_PROTOCOL_INVALID_ARGUMENT;
+    for (index = 0u; index < message_count; index++) {
+        const cdin_protocol_message_view *message = &messages[index];
+        uint64_t message_revision;
+        size_t widget_count = 0u;
+        int is_presentation =
+            message->type == CDIN_PROTOCOL_UI_STYLE_TABLE ||
+            message->type == CDIN_PROTOCOL_UI_PANEL ||
+            message->type == CDIN_PROTOCOL_UI_PROMPT;
+        if (!is_presentation) continue;
+        if (message->payload == NULL || message->payload_length == 0u ||
+            message->payload_length > 131072u ||
+            aggregate_bytes > 131072u - message->payload_length) {
+            return CDIN_PROTOCOL_INVALID_SCHEMA;
+        }
+        aggregate_bytes += message->payload_length;
+        if (!cbor_field_uint(message->payload, message->payload_length,
+                             "revision", &message_revision) ||
+            message_revision != revision) return CDIN_PROTOCOL_INVALID_SCHEMA;
+
+        if (message->type == CDIN_PROTOCOL_UI_STYLE_TABLE) {
+            if (has_style_table || !cbor_validate_ui_style_table_message(
+                    message->payload, message->payload_length)) return CDIN_PROTOCOL_INVALID_SCHEMA;
+            has_style_table = 1;
+        } else if (message->type == CDIN_PROTOCOL_UI_PANEL) {
+            const uint8_t *panel_id = NULL;
+            size_t panel_id_length = 0u;
+            size_t previous;
+            if (panel_count >= 16u ||
+                !cbor_field_text_value(message->payload, message->payload_length,
+                                       "panel_id", &panel_id, &panel_id_length) ||
+                panel_id_length == 0u || panel_id_length > 128u ||
+                !cbor_validate_ui_panel_message(message->payload, message->payload_length,
+                                                &widget_count) ||
+                widget_count > 128u || total_widgets > 1024u - widget_count) {
+                return CDIN_PROTOCOL_INVALID_SCHEMA;
+            }
+            for (previous = 0u; previous < panel_count; previous++) {
+                if (panel_id_lengths[previous] == panel_id_length &&
+                    memcmp(panel_ids[previous], panel_id, panel_id_length) == 0) {
+                    return CDIN_PROTOCOL_INVALID_SCHEMA;
+                }
+            }
+            memcpy(panel_ids[panel_count], panel_id, panel_id_length);
+            panel_id_lengths[panel_count] = panel_id_length;
+            panel_count++;
+            total_widgets += widget_count;
+        } else {
+            if (has_prompt || !cbor_validate_ui_prompt_message(
+                    message->payload, message->payload_length, &widget_count) ||
+                total_widgets > 1024u - widget_count) return CDIN_PROTOCOL_INVALID_SCHEMA;
+            has_prompt = 1;
+            total_widgets += widget_count;
+        }
+    }
+    return CDIN_PROTOCOL_OK;
+}
+
 cdin_protocol_status cdin_protocol_encode_frame(const cdin_protocol_message_view *message,
                                                  uint8_t *output,
                                                  size_t output_capacity,
