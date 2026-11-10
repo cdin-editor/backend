@@ -17,6 +17,7 @@ jobs:
       # Keep the package prefix consistent between the installer and every
       # subsequent Make/pkg-config invocation in this job.
       KERNEL_PREFIX: ${{ github.workspace }}/.deps/kernel
+      LOGGER_PREFIX: ${{ github.workspace }}/.deps/logger
     steps:
       - uses: actions/checkout@v7
       - name: Check out the pinned Runtime source
@@ -36,7 +37,7 @@ jobs:
       - name: Install the pinned Kernel package
         run: |
           bash scripts/install-deps.sh --prefix "$KERNEL_PREFIX"
-          echo "PKG_CONFIG_PATH=$KERNEL_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$LOGGER_PREFIX/lib/pkgconfig:$KERNEL_PREFIX/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Verify Kernel pkg-config visibility
         run: |
           test -f "$KERNEL_PREFIX/lib/pkgconfig/cdin-kernel.pc"
@@ -44,6 +45,7 @@ jobs:
           printf 'PKG_CONFIG_PATH=%s\\n' "$PKG_CONFIG_PATH"
           test "$(pkg-config --modversion cdin-kernel)" = "1.2.1"
           pkg-config --atleast-version=1.2.1 cdin-kernel
+          test "$(pkg-config --modversion m-mdy-m-log)" = "0.1.0"
           pkg-config --static --libs cdin-kernel
       - name: Build Backend with Lua enabled
         run: make clean && make WITH_LUA=1 all

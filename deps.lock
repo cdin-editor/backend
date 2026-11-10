@@ -5,3 +5,6 @@ CDIN_KERNEL_VERSION="1.2.1"
 CDIN_KERNEL_ABI_MAJOR="1"
 CDIN_KERNEL_ABI_MINOR="1"
 CDIN_KERNEL_ABI_PATCH="0"
+# Kernel's static link closure includes this independently versioned logger SDK.
+M_MDY_M_LOG_REPOSITORY="https://github.com/m-mdy-m/log.c"
+M_MDY_M_LOG_VERSION="0.1.0"

@@ -1,12 +1,41 @@
-## Unreleased
+## [1.2.1]
 
-> **Current package identity:** Backend `1.2.0` is active in the Registry
-> Catalog for CDIN integration, but it has not been published as a formal
-> `v1.2.0` tag or GitHub Release. The tag-triggered release workflow remains
-> the publication path; until that tag is deliberately created, these changes
-> remain Unreleased. The `1.1.0` version-bump entry below records an
-> intermediate change during this development line; the current CMake,
-> Registry metadata and CDIN Manifest version is `1.2.0`.
+### Added
+
+- Prepare native install-prefix packages for Linux x86_64/ARM64, macOS
+  x86_64/ARM64 and Windows x86_64 UCRT64 with immutable artifact identity,
+  SHA-256 and build/source provenance.
+- Export relocatable CMake package targets and complete pkg-config metadata
+  for Backend, Protocol and Kernel-independent services.
+- Add independent clean-prefix consumer tests for CMake and static pkg-config
+  linking. Kernel ABI, the independently versioned logger SDK and Lua 5.4
+  remain externally provisioned dependencies.
+- Add a fail-closed metadata generator that requires all five target archives,
+  exact source revision, artifact identity, URI, size and checksum before it
+  emits a new immutable Component Release Metadata document.
+
+### Verification
+
+- Release readiness is gated by the exact-tag five-target Pipeline matrix,
+  downloaded-artifact checksum checks and native external-consumer tests.
+- Native CI exercises the package archive/extract/consumer path on Linux,
+  macOS and Windows UCRT64.
+- Registry Catalog publication is a separate immutable metadata update after
+  the real release assets have been created and verified.
+
+> **Package publication boundary:** Backend `1.2.0` remains the active
+> Registry Catalog identity until the deliberate `v1.2.1` tag is published,
+> its five native assets are verified, and the new metadata/Catalog identity
+> is committed. This changelog section prepares the release notes; it does
+> not itself create a tag, release or Catalog update.
+
+## [Unreleased]
+
+### Follow-up
+
+- Publish the five target artifacts and then add the generated metadata to
+  the Registry Catalog and CDIN Product Definitions. These are separate
+  changes after the release assets have been verified.
 
 - Correct the Protocol server regression test to expect the reattach role notification at the next per-connection frame sequence after the earlier promotion event.
 - Add an optional, snapshot-pinned Host document line-lookup bridge: callers provide document identity, byte offset and expected document version, and receive a versioned line result without exposing Kernel handles to Runtime.

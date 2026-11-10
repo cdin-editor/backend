@@ -5,7 +5,18 @@ find_dependency(Threads)
 
 if(@CDIN_BUILD_BACKEND@)
     find_dependency(PkgConfig)
+    # Preserve the static dependency closure exported by cdin::backend.
+    set(PKG_CONFIG_ARGN --static)
     pkg_check_modules(CDIN_KERNEL REQUIRED IMPORTED_TARGET "cdin-kernel>=@CDIN_KERNEL_MIN_VERSION@")
+    pkg_check_modules(MMLOG REQUIRED IMPORTED_TARGET "m-mdy-m-log>=0.1.0")
+endif()
+
+if(@CDIN_WITH_LUA@)
+    find_dependency(PkgConfig)
+    pkg_check_modules(LUA REQUIRED IMPORTED_TARGET "lua5.4>=5.4")
+    if(LUA_VERSION VERSION_LESS "5.4" OR NOT LUA_VERSION VERSION_LESS "5.5")
+        message(FATAL_ERROR "cdinBackend requires PUC Lua 5.4.x; found ${LUA_VERSION}")
+    endif()
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/cdinBackendTargets.cmake")

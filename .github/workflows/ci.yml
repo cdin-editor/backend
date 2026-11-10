@@ -59,7 +59,7 @@ jobs:
         with:
           msystem: UCRT64
           update: true
-          install: git make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-curl mingw-w64-ucrt-x86_64-unzip mingw-w64-ucrt-x86_64-lua54
+          install: git make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-curl mingw-w64-ucrt-x86_64-unzip mingw-w64-ucrt-x86_64-lua54 tar python
       - if: matrix.os != 'windows-latest'
         name: Install pinned Kernel package
         shell: bash
@@ -83,7 +83,49 @@ jobs:
         name: Run Backend, Kernel and extension resolver integration
         shell: bash
         run: make WITH_LUA=1 integration
+      - if: matrix.os != 'windows-latest'
+        name: Verify relocatable install and external CMake consumer
+        shell: bash
+        run: bash scripts/test-installed-package.sh
+      - if: matrix.os != 'windows-latest'
+        name: Build and verify target-native artifact package
+        shell: bash
+        run: |
+          target_os=linux
+          target_abi=gnu-glibc-2.39
+          if [[ "${RUNNER_OS}" == macOS ]]; then
+            target_os=darwin
+            target_abi=macos-15
+          fi
+          target_arch="$(uname -m)"
+          case "$target_arch" in
+            x86_64|amd64) target_arch=x86_64 ;;
+            aarch64|arm64) target_arch=arm64 ;;
+            *) echo "Unsupported runner architecture: $target_arch" >&2; exit 2 ;;
+          esac
+          BACKEND_TARGET_OS="$target_os" \
+          BACKEND_TARGET_ARCH="$target_arch" \
+          BACKEND_TARGET_ABI="$target_abi" \
+          BACKEND_TARGET_RUNNER="github-actions-$target_os-$target_arch" \
+          PIPELINE_RELEASE_TAG=v1.2.1 \
+            bash scripts/package-binary.sh
+          bash scripts/test-binary-package.sh
       - if: matrix.os == 'windows-latest'
         name: Run Backend, Kernel and extension resolver integration
         shell: msys2 {0}
         run: make WITH_LUA=1 integration
+      - if: matrix.os == 'windows-latest'
+        name: Verify relocatable install and external CMake consumer
+        shell: msys2 {0}
+        run: bash scripts/test-installed-package.sh
+      - if: matrix.os == 'windows-latest'
+        name: Build and verify target-native artifact package
+        shell: msys2 {0}
+        run: |
+          BACKEND_TARGET_OS=windows \
+          BACKEND_TARGET_ARCH=x86_64 \
+          BACKEND_TARGET_ABI=windows-ucrt64 \
+          BACKEND_TARGET_RUNNER=github-actions-windows-ucrt64 \
+          PIPELINE_RELEASE_TAG=v1.2.1 \
+            bash scripts/package-binary.sh
+          bash scripts/test-binary-package.sh

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(cdin_backend VERSION 1.2.0 LANGUAGES C)
+project(cdin_backend VERSION 1.2.1 LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CTest)
@@ -65,6 +65,7 @@ find_package(PkgConfig REQUIRED)
 # modules and is never exposed through public include/cdin headers.
 set(PKG_CONFIG_ARGN "--static")
 pkg_check_modules(CDIN_KERNEL REQUIRED IMPORTED_TARGET "cdin-kernel>=${CDIN_KERNEL_MIN_VERSION}")
+pkg_check_modules(MMLOG REQUIRED IMPORTED_TARGET "m-mdy-m-log>=0.1.0")
 pkg_get_variable(CDIN_KERNEL_LIBDIR cdin-kernel libdir)
 if(NOT CDIN_KERNEL_LIBDIR)
     message(FATAL_ERROR "cdin-kernel.pc did not provide its library directory")
@@ -108,14 +109,15 @@ elseif(APPLE)
 endif()
 
 if(CDIN_WITH_LUA)
-    find_package(Lua 5.4 REQUIRED)
-    if(LUA_VERSION_STRING VERSION_LESS "5.4" OR NOT LUA_VERSION_STRING VERSION_LESS "5.5")
-        message(FATAL_ERROR "CDIN_WITH_LUA requires PUC Lua 5.4.x; found ${LUA_VERSION_STRING}")
+    # Use the same pkg-config contract as the Make build and release package.
+    # This also recreates the imported target for downstream static consumers.
+    pkg_check_modules(LUA REQUIRED IMPORTED_TARGET "lua5.4>=5.4")
+    if(LUA_VERSION VERSION_LESS "5.4" OR NOT LUA_VERSION VERSION_LESS "5.5")
+        message(FATAL_ERROR "CDIN_WITH_LUA requires PUC Lua 5.4.x; found ${LUA_VERSION}")
     endif()
     target_sources(cdin_backend PRIVATE src/runtime/extension_resolver.c)
     target_compile_definitions(cdin_backend PRIVATE CDIN_WITH_LUA)
-    target_include_directories(cdin_backend PRIVATE ${LUA_INCLUDE_DIR})
-    target_link_libraries(cdin_backend PRIVATE ${LUA_LIBRARIES})
+    target_link_libraries(cdin_backend PRIVATE PkgConfig::LUA)
 endif()
 
 endif()
@@ -137,6 +139,17 @@ configure_file(packaging/cdin-backend-services.pc.in
                "${CMAKE_CURRENT_BINARY_DIR}/cdin-backend-services.pc" @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdin-backend-services.pc"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+
+configure_file(packaging/cdin-protocol.pc.in
+               "${CMAKE_CURRENT_BINARY_DIR}/cdin-protocol.pc" @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdin-protocol.pc"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+if(CDIN_BUILD_BACKEND)
+    configure_file(packaging/cdin-backend.pc.in
+                   "${CMAKE_CURRENT_BINARY_DIR}/cdin-backend.pc" @ONLY)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cdin-backend.pc"
+            DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+endif()
 
 include(CMakePackageConfigHelpers)
 set(CDIN_BACKEND_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/cdinBackend")

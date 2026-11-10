@@ -42,20 +42,21 @@ Kernel header.
 
 ## Current status
 
-This repository currently builds Backend library/package version `1.2.0`.
-That source identity is active in the CDIN Registry Catalog and is selected by
-the TUI and GUI-SDL Product Definitions. It is an **integration package
-candidate**, not yet a formal Git-tagged `v1.2.0` source release: no `v1.2.0`
-tag or GitHub Release has been published. The release workflow remains
-tag-driven and will publish an archive only when the matching version tag is
-created.
+This repository currently prepares Backend package version `1.2.1` as the next
+artifact-delivery candidate. The existing `1.2.0` source identity remains
+immutable in the CDIN Catalog and is still the selected integration package
+until the new target-specific assets and Registry metadata are published. The
+`1.2.1` release workflow is tag-driven and does not become an active Catalog
+candidate merely because its build workflow passes.
 
 The package provides the shared Frontend Protocol 1.0.0 codec/server, reusable
 OS/job services, Kernel adapter, PUC Lua 5.4 bridge, Runtime UI-model
 projection, owner-thread inbound event dispatcher, version-pinned line-read
-service, Headless Frontend harness and integration workflows. Backend is
+service, Headless Frontend harness and integration workflows. The artifact
+package model and external-consumer requirements are documented in
+[Artifact packages](docs/artifact-packages.md). Backend is
 **not yet a complete runnable CDIN editor** on its own; the paired Runtime
-1.0.0-rc.1, live Lua + Kernel integration and concrete Unix Socket/Windows
+1.0.0-rc.2, live Lua + Kernel integration and concrete Unix Socket/Windows
 Named Pipe transport remain product/release boundaries tracked by the
 composition root and Spec.
 

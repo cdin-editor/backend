@@ -1,4 +1,4 @@
-name: Build and publish release
+name: Build and publish Backend binary packages
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   release:
-    name: Check and publish Backend source package
+    name: Build and publish target-specific Backend packages (Pipeline)
     permissions:
       contents: write
       id-token: write
@@ -18,8 +18,65 @@ jobs:
     with:
       pipeline-ref: main
       changelog-path: CHANGELOG.md
-      test-command: bash scripts/ci-check.sh
-      build-command: bash scripts/package-release.sh
+      test-command: bash scripts/release-test.sh
+      build-command: bash scripts/package-binary.sh
+      artifact-test-command: bash scripts/test-binary-package.sh
       artifact-path: |
         dist/cdin-backend-*.tar.gz
         dist/cdin-backend-*.tar.gz.sha256
+        dist/cdin-backend-*.tar.gz.artifact.json
+      build-matrix-json: >-
+        {"include":[
+          {
+            "id":"linux-x86_64",
+            "os":"ubuntu-24.04",
+            "target_os":"linux",
+            "architecture":"x86_64",
+            "abi":"gnu-glibc-2.39",
+            "test_command":"bash scripts/release-test.sh",
+            "build_command":"BACKEND_TARGET_OS=linux BACKEND_TARGET_ARCH=x86_64 BACKEND_TARGET_ABI=gnu-glibc-2.39 BACKEND_TARGET_RUNNER=github-actions-ubuntu-24.04 bash scripts/package-binary.sh && bash scripts/package-release.sh",
+            "artifact_test_command":"bash scripts/test-binary-package.sh"
+          },
+          {
+            "id":"linux-arm64",
+            "os":"ubuntu-24.04-arm",
+            "target_os":"linux",
+            "architecture":"arm64",
+            "abi":"gnu-glibc-2.39",
+            "test_command":"bash scripts/release-test.sh",
+            "build_command":"BACKEND_TARGET_OS=linux BACKEND_TARGET_ARCH=arm64 BACKEND_TARGET_ABI=gnu-glibc-2.39 BACKEND_TARGET_RUNNER=github-actions-ubuntu-24.04-arm64 bash scripts/package-binary.sh",
+            "artifact_test_command":"bash scripts/test-binary-package.sh"
+          },
+          {
+            "id":"macos-x86_64",
+            "os":"macos-15-intel",
+            "target_os":"darwin",
+            "architecture":"x86_64",
+            "abi":"macos-15",
+            "test_command":"bash scripts/release-test.sh",
+            "build_command":"BACKEND_TARGET_OS=darwin BACKEND_TARGET_ARCH=x86_64 BACKEND_TARGET_ABI=macos-15 BACKEND_TARGET_RUNNER=github-actions-macos-15-intel bash scripts/package-binary.sh",
+            "artifact_test_command":"bash scripts/test-binary-package.sh"
+          },
+          {
+            "id":"macos-arm64",
+            "os":"macos-15",
+            "target_os":"darwin",
+            "architecture":"arm64",
+            "abi":"macos-15",
+            "test_command":"bash scripts/release-test.sh",
+            "build_command":"BACKEND_TARGET_OS=darwin BACKEND_TARGET_ARCH=arm64 BACKEND_TARGET_ABI=macos-15 BACKEND_TARGET_RUNNER=github-actions-macos-15-arm64 bash scripts/package-binary.sh",
+            "artifact_test_command":"bash scripts/test-binary-package.sh"
+          },
+          {
+            "id":"windows-ucrt64-x86_64",
+            "os":"windows-latest",
+            "msys2_msystem":"UCRT64",
+            "msys2_packages":"git make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-curl mingw-w64-ucrt-x86_64-unzip mingw-w64-ucrt-x86_64-lua54 tar python",
+            "target_os":"windows",
+            "architecture":"x86_64",
+            "abi":"windows-ucrt64",
+            "test_command":"bash scripts/release-test.sh",
+            "build_command":"BACKEND_TARGET_OS=windows BACKEND_TARGET_ARCH=x86_64 BACKEND_TARGET_ABI=windows-ucrt64 BACKEND_TARGET_RUNNER=github-actions-windows-2025-ucrt64 bash scripts/package-binary.sh",
+            "artifact_test_command":"bash scripts/test-binary-package.sh"
+          }
+        ]}

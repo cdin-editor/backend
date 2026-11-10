@@ -6,8 +6,10 @@ PKG_CONFIG ?= pkg-config
 
 BUILD_DIR ?= build
 KERNEL_PREFIX ?= $(CURDIR)/.deps/kernel
-export KERNEL_PREFIX
+LOGGER_PREFIX ?= $(CURDIR)/.deps/logger
+export KERNEL_PREFIX LOGGER_PREFIX
 KERNEL_MIN_VERSION ?= 1.2.1
+LOGGER_MIN_VERSION ?= 0.1.0
 LUA_PKG ?= lua5.4
 WITH_LUA ?= auto
 HOST_OS := $(shell uname -s 2>/dev/null || printf unknown)
@@ -21,33 +23,33 @@ BASE_CPPFLAGS := -Iinclude -Isrc
 # services archive is intentionally buildable without Kernel installed.
 ifneq ($(findstring MINGW,$(HOST_OS)),)
   KERNEL_PKG_CONFIG_DIR := $(shell cygpath -m "$(KERNEL_PREFIX)/lib/pkgconfig")
-  KERNEL_PKG_CONFIG_WINDOWS_PATH := yes
+  LOGGER_PKG_CONFIG_DIR := $(shell cygpath -m "$(LOGGER_PREFIX)/lib/pkgconfig")
+  PKG_CONFIG_PATH_SEPARATOR := ;
   THREAD_LIBS :=
 else ifneq ($(findstring MSYS,$(HOST_OS)),)
   KERNEL_PKG_CONFIG_DIR := $(shell cygpath -m "$(KERNEL_PREFIX)/lib/pkgconfig")
-  KERNEL_PKG_CONFIG_WINDOWS_PATH := yes
+  LOGGER_PKG_CONFIG_DIR := $(shell cygpath -m "$(LOGGER_PREFIX)/lib/pkgconfig")
+  PKG_CONFIG_PATH_SEPARATOR := ;
   THREAD_LIBS :=
 else ifneq ($(findstring CYGWIN,$(HOST_OS)),)
   KERNEL_PKG_CONFIG_DIR := $(shell cygpath -m "$(KERNEL_PREFIX)/lib/pkgconfig")
-  KERNEL_PKG_CONFIG_WINDOWS_PATH := yes
+  LOGGER_PKG_CONFIG_DIR := $(shell cygpath -m "$(LOGGER_PREFIX)/lib/pkgconfig")
+  PKG_CONFIG_PATH_SEPARATOR := ;
   THREAD_LIBS :=
 else
   KERNEL_PKG_CONFIG_DIR := $(KERNEL_PREFIX)/lib/pkgconfig
+  LOGGER_PKG_CONFIG_DIR := $(LOGGER_PREFIX)/lib/pkgconfig
+  PKG_CONFIG_PATH_SEPARATOR := :
   THREAD_LIBS := -pthread
 endif
 
-ifeq ($(KERNEL_PKG_CONFIG_WINDOWS_PATH),yes)
-  KERNEL_PKG_CONFIG_PATH := $(KERNEL_PKG_CONFIG_DIR)
-else
-  KERNEL_PKG_CONFIG_PATH := $(KERNEL_PKG_CONFIG_DIR)$(if $(strip $(PKG_CONFIG_PATH)),:$(PKG_CONFIG_PATH))
-endif
-export PKG_CONFIG_PATH := $(KERNEL_PKG_CONFIG_PATH)
+DEPENDENCY_PKG_CONFIG_PATH := $(LOGGER_PKG_CONFIG_DIR)$(PKG_CONFIG_PATH_SEPARATOR)$(KERNEL_PKG_CONFIG_DIR)$(if $(strip $(PKG_CONFIG_PATH)),$(PKG_CONFIG_PATH_SEPARATOR)$(PKG_CONFIG_PATH))
+export PKG_CONFIG_PATH := $(DEPENDENCY_PKG_CONFIG_PATH)
 
-# Pass the package search path explicitly to make's parse-time shell calls.
-# This avoids depending on how a caller exported PKG_CONFIG_PATH between steps.
-KERNEL_PKG_OK := $(shell PKG_CONFIG_PATH="$(KERNEL_PKG_CONFIG_PATH)" $(PKG_CONFIG) --atleast-version=$(KERNEL_MIN_VERSION) cdin-kernel >/dev/null 2>&1 && echo yes)
-KERNEL_CFLAGS := $(shell PKG_CONFIG_PATH="$(KERNEL_PKG_CONFIG_PATH)" $(PKG_CONFIG) --cflags cdin-kernel 2>/dev/null)
-KERNEL_LIBS := $(shell PKG_CONFIG_PATH="$(KERNEL_PKG_CONFIG_PATH)" $(PKG_CONFIG) --static --libs cdin-kernel 2>/dev/null)
+KERNEL_PKG_OK := $(shell PKG_CONFIG_PATH="$(DEPENDENCY_PKG_CONFIG_PATH)" $(PKG_CONFIG) --atleast-version=$(KERNEL_MIN_VERSION) cdin-kernel >/dev/null 2>&1 && echo yes)
+LOGGER_PKG_OK := $(shell PKG_CONFIG_PATH="$(DEPENDENCY_PKG_CONFIG_PATH)" $(PKG_CONFIG) --exact-version=$(LOGGER_MIN_VERSION) m-mdy-m-log >/dev/null 2>&1 && echo yes)
+KERNEL_CFLAGS := $(shell PKG_CONFIG_PATH="$(DEPENDENCY_PKG_CONFIG_PATH)" $(PKG_CONFIG) --cflags cdin-kernel 2>/dev/null)
+KERNEL_LIBS := $(shell PKG_CONFIG_PATH="$(DEPENDENCY_PKG_CONFIG_PATH)" $(PKG_CONFIG) --static --libs cdin-kernel 2>/dev/null)
 
 LUA_AVAILABLE := $(shell $(PKG_CONFIG) --exists $(LUA_PKG) 2>/dev/null && echo yes)
 ifeq ($(WITH_LUA),1)
@@ -102,12 +104,17 @@ library: require-kernel $(BACKEND_LIB)
 require-kernel:
 	@if [ "$(KERNEL_PKG_OK)" != yes ]; then \
 	  echo "cdin-kernel >= $(KERNEL_MIN_VERSION) is not installed or not visible to pkg-config." >&2; \
-	  echo "Run 'make deps' or set KERNEL_PREFIX / PKG_CONFIG_PATH to an installed Kernel package." >&2; \
+	  echo "Run 'make deps' or set KERNEL_PREFIX to an installed Kernel package." >&2; \
+	  exit 2; \
+	fi
+	@if [ "$(LOGGER_PKG_OK)" != yes ]; then \
+	  echo "m-mdy-m-log $(LOGGER_MIN_VERSION) is not installed or not visible to pkg-config." >&2; \
+	  echo "Run 'make deps' or set LOGGER_PREFIX to the independent Logger SDK prefix." >&2; \
 	  exit 2; \
 	fi
 
 deps:
-	bash scripts/install-deps.sh --prefix "$(KERNEL_PREFIX)"
+	bash scripts/install-deps.sh --prefix "$(KERNEL_PREFIX)" --logger-prefix "$(LOGGER_PREFIX)"
 
 $(SERVICE_LIB): $(SERVICE_OBJ)
 	@mkdir -p $(@D)
@@ -234,7 +241,9 @@ check: e2e library integration lint boundary
 info:
 	@echo "Kernel pkg-config: $(if $(filter yes,$(KERNEL_PKG_OK)),cdin-kernel available,not found)"
 	@echo "Kernel prefix: $(KERNEL_PREFIX)"
+	@echo "Logger prefix: $(LOGGER_PREFIX)"
 	@echo "Kernel minimum package version: $(KERNEL_MIN_VERSION)"
+	@echo "Logger required package version: $(LOGGER_MIN_VERSION)"
 	@echo "Lua bridge: $(if $(filter yes,$(LUA_AVAILABLE)),Lua 5.4 development package found,stub build)"
 	@echo "Reusable service sources: $(words $(SERVICE_SRC))"
 	@echo "Backend host sources: $(words $(BACKEND_SRC))"

@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Generate immutable Backend Release Metadata from published binary assets.
+
+Run this from the exact release-tag checkout after downloading every
+*.artifact.json descriptor and its matching archive/checksum sidecar.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+from urllib.parse import urlparse
+
+EXPECTED_TARGETS = {
+    ("linux", "x86_64", "gnu-glibc-2.39"),
+    ("linux", "arm64", "gnu-glibc-2.39"),
+    ("darwin", "x86_64", "macos-15"),
+    ("darwin", "arm64", "macos-15"),
+    ("windows", "x86_64", "windows-ucrt64"),
+}
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tag", default="")
+    parser.add_argument("--artifact-dir", type=Path, default=Path("dist"))
+    parser.add_argument("--source-revision", default="")
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+
+    tag = args.tag or __import__("os").environ.get("GITHUB_REF_NAME", "")
+    if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", tag):
+        parser.error("--tag must be an immutable vMAJOR.MINOR.PATCH tag")
+    version = tag[1:]
+    revision = args.source_revision or subprocess.check_output(
+        ["git", "rev-parse", "--verify", f"{tag}^{{commit}}"], text=True
+    ).strip()
+    if not re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", revision):
+        parser.error("source revision must be a full 40- or 64-character Git object ID")
+
+    descriptors = sorted(args.artifact_dir.glob("*.tar.gz.artifact.json"))
+    if len(descriptors) != len(EXPECTED_TARGETS):
+        raise SystemExit(
+            f"expected {len(EXPECTED_TARGETS)} artifact descriptors; found {len(descriptors)}"
+        )
+
+    artifacts = []
+    selected_targets = set()
+    source_uri = "https://github.com/cdin-editor/backend"
+    release_prefix = f"https://github.com/cdin-editor/backend/releases/download/{tag}/"
+
+    for descriptor_path in descriptors:
+        record = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        if record.get("source_revision") != revision:
+            raise SystemExit(f"{descriptor_path}: source revision does not match {revision}")
+        artifact = record.get("artifact")
+        if not isinstance(artifact, dict):
+            raise SystemExit(f"{descriptor_path}: missing artifact object")
+        target = artifact.get("target", {})
+        key = (target.get("os"), target.get("architecture"), target.get("abi"))
+        if key not in EXPECTED_TARGETS or key in selected_targets:
+            raise SystemExit(f"{descriptor_path}: unexpected or duplicate target {key}")
+        selected_targets.add(key)
+
+        expected_artifact_id = f"backend-{key[0]}-{key[1].replace('_', '-')}-{key[2]}"
+        expected_filename = f"cdin-backend-{version}-{key[0]}-{key[1].replace('_', '-')}-{key[2]}.tar.gz"
+        if artifact.get("artifact_id") != expected_artifact_id:
+            raise SystemExit(f"{descriptor_path}: unexpected artifact ID")
+        if artifact.get("kind") != "native-development-package":
+            raise SystemExit(f"{descriptor_path}: artifact kind must be native-development-package")
+        if artifact.get("format") != "tar.gz" or artifact.get("layout") != "cmake-prefix-v1":
+            raise SystemExit(f"{descriptor_path}: unsupported package format or layout")
+        if artifact.get("source_unit_ids") != ["backend-source"]:
+            raise SystemExit(f"{descriptor_path}: artifact must reference backend-source")
+        build = artifact.get("build")
+        if not isinstance(build, dict) or build.get("recipe") != {
+            "source_unit_id": "backend-source",
+            "path": "scripts/package-binary.sh",
+        } or not build.get("toolchain") or not build.get("runner"):
+            raise SystemExit(f"{descriptor_path}: incomplete build provenance")
+
+        filename = artifact.get("file_name", "")
+        if filename != expected_filename or Path(filename).name != filename:
+            raise SystemExit(f"{descriptor_path}: unexpected filename {filename!r}")
+        if descriptor_path.name != filename + ".artifact.json":
+            raise SystemExit(f"{descriptor_path}: descriptor filename does not match the asset")
+        if not re.fullmatch(r"[a-fA-F0-9]{64}", str(artifact.get("sha256", ""))):
+            raise SystemExit(f"{descriptor_path}: invalid SHA-256 digest")
+        if not isinstance(artifact.get("size_bytes"), int) or artifact["size_bytes"] <= 0:
+            raise SystemExit(f"{descriptor_path}: invalid artifact byte count")
+        asset_path = args.artifact_dir / filename
+        if not asset_path.is_file():
+            raise SystemExit(f"{descriptor_path}: missing archive {asset_path}")
+        actual_digest = sha256(asset_path)
+        actual_size = asset_path.stat().st_size
+        if actual_digest != artifact.get("sha256"):
+            raise SystemExit(f"{descriptor_path}: digest mismatch for {filename}")
+        if actual_size != artifact.get("size_bytes"):
+            raise SystemExit(f"{descriptor_path}: size mismatch for {filename}")
+        sidecar = Path(str(asset_path) + ".sha256")
+        if not sidecar.is_file():
+            raise SystemExit(f"{descriptor_path}: missing checksum sidecar")
+        sidecar_fields = sidecar.read_text(encoding="ascii").split()
+        if len(sidecar_fields) < 2 or sidecar_fields[0] != actual_digest:
+            raise SystemExit(f"{descriptor_path}: checksum sidecar mismatch")
+        if sidecar_fields[1].lstrip("*") != filename:
+            raise SystemExit(f"{descriptor_path}: checksum sidecar filename mismatch")
+        if artifact.get("uri") != release_prefix + filename:
+            raise SystemExit(f"{descriptor_path}: URI is not the exact tag asset URL")
+        parsed_uri = urlparse(artifact["uri"])
+        if parsed_uri.scheme != "https" or parsed_uri.netloc != "github.com":
+            raise SystemExit(f"{descriptor_path}: artifact URI must use github.com over HTTPS")
+
+        artifacts.append(artifact)
+
+    if selected_targets != EXPECTED_TARGETS:
+        missing = sorted(EXPECTED_TARGETS - selected_targets)
+        raise SystemExit(f"missing required native target artifacts: {missing}")
+
+    metadata = {
+        "schema_version": "1.1.0",
+        "component_id": "backend",
+        "variant": "default",
+        "version": version,
+        "status": "active",
+        "source_units": [{
+            "source_unit_id": "backend-source",
+            "repository_uri": source_uri,
+            "revision": revision,
+        }],
+        "artifacts": sorted(
+            artifacts,
+            key=lambda item: (
+                item["target"]["os"],
+                item["target"]["architecture"],
+                item["target"]["abi"],
+            ),
+        ),
+        "dependencies": [{
+            "component_id": "runtime",
+            "variant": "default",
+            "version_constraint": ">=1.0.0-rc.2 <2.0.0",
+        }],
+        "contracts": {
+            "provides": [
+                {"contract_id": "org.cdin.runtime-host-api", "version": "1.0.0"},
+                {"contract_id": "org.cdin.frontend-protocol", "version": "1.0.0"},
+            ],
+            "requires": [
+                {
+                    "contract_id": "org.cdin.kernel-abi",
+                    "version_constraint": ">=1.1.0 <2.0.0",
+                },
+                {
+                    "contract_id": "org.m-mdy-m.log-c-api",
+                    "version_constraint": ">=0.1.0 <1.0.0",
+                },
+                {
+                    "contract_id": "org.lua.puc-lua-c-api",
+                    "version_constraint": ">=5.4.0 <5.5.0",
+                },
+            ],
+        },
+    }
+    output = args.output or Path("registry/releases") / f"backend-{version}.json"
+    if output.exists():
+        raise SystemExit(f"refusing to overwrite immutable release metadata: {output}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    print(f"Wrote {output} for {len(artifacts)} verified target packages at source {revision}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"metadata generation failed: {error}", file=sys.stderr)
+        raise SystemExit(1)
