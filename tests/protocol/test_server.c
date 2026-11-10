@@ -621,6 +621,69 @@ static cdin_protocol_client *new_attached_with_capabilities(
     return client;
 }
 
+static void test_byte_anchored_lines_capability_gate(void)
+{
+    static const uint8_t anchored_request[] = {
+        0xa5u,
+        0x67u, 'v','e','r','s','i','o','n', 0x00u,
+        0x67u, 'v','i','e','w','_','i','d', 0x61u, 'v',
+        0x6au, 'f','i','r','s','t','_','l','i','n','e', 0x00u,
+        0x6au, 'l','i','n','e','_','c','o','u','n','t', 0x01u,
+        0x6bu, 'a','n','c','h','o','r','_','b','y','t','e', 0x04u
+    };
+    cdin_protocol_server *server = NULL;
+    cdin_protocol_client *client = NULL;
+    cdin_protocol_hello hello;
+    cdin_protocol_hello_ack ack;
+    cdin_protocol_message_view message;
+
+    assert(cdin_protocol_server_create(1u, 4u, 2u, 0x11223344u,
+        CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES, 1024u, NULL, NULL, &server) == CDIN_BACKEND_OK);
+    memset(&hello, 0, sizeof(hello));
+    hello.major = CDIN_PROTOCOL_VERSION_MAJOR;
+    hello.minor = CDIN_PROTOCOL_VERSION_MINOR;
+    hello.frontend_name = "legacy-without-byte-anchor";
+    hello.capabilities = 0u;
+    assert(cdin_protocol_client_open(server, &client) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_hello_accept(client, &hello, &ack) == CDIN_BACKEND_OK);
+    assert((ack.accepted_capabilities & CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES) == 0u);
+    assert(cdin_protocol_attach(client) == CDIN_BACKEND_OK);
+    memset(&message, 0, sizeof(message));
+    message.major = CDIN_PROTOCOL_VERSION_MAJOR;
+    message.minor = CDIN_PROTOCOL_VERSION_MINOR;
+    message.sequence = 1u;
+    message.type = CDIN_PROTOCOL_VIEW_REQUEST_LINES;
+    message.name_space = "view";
+    message.payload = anchored_request;
+    message.payload_length = sizeof(anchored_request);
+    assert(cdin_protocol_accept_input_sequence(client, 1u) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_receive(client, &message) == CDIN_BACKEND_UNSUPPORTED);
+    assert(cdin_protocol_pending_events(client) == 0u);
+    assert(cdin_protocol_client_close(client) == CDIN_BACKEND_OK);
+    cdin_protocol_server_destroy(server);
+
+    server = NULL;
+    client = NULL;
+    assert(cdin_protocol_server_create(1u, 4u, 2u, 0x11223344u,
+        CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES, 1024u, NULL, NULL, &server) == CDIN_BACKEND_OK);
+    memset(&hello, 0, sizeof(hello));
+    hello.major = CDIN_PROTOCOL_VERSION_MAJOR;
+    hello.minor = CDIN_PROTOCOL_VERSION_MINOR;
+    hello.frontend_name = "byte-anchor-driver";
+    hello.capabilities = CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES;
+    assert(cdin_protocol_client_open(server, &client) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_hello_accept(client, &hello, &ack) == CDIN_BACKEND_OK);
+    assert((ack.accepted_capabilities & CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES) != 0u);
+    assert(cdin_protocol_client_has_capability(client, CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES));
+    assert(cdin_protocol_attach(client) == CDIN_BACKEND_OK);
+    message.sequence = 1u;
+    assert(cdin_protocol_accept_input_sequence(client, 1u) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_receive(client, &message) == CDIN_BACKEND_OK);
+    assert(cdin_protocol_pending_events(client) == 1u);
+    assert(cdin_protocol_client_close(client) == CDIN_BACKEND_OK);
+    cdin_protocol_server_destroy(server);
+}
+
 static void test_ime_connection_state_machine(void)
 {
     static const uint8_t start_41[] = {
@@ -862,6 +925,7 @@ int main(void)
     test_flush_slot_is_reserved();
     test_pane_splitter_result_and_snapshot_are_atomic();
     test_ime_connection_state_machine();
+    test_byte_anchored_lines_capability_gate();
     test_atomic_ui_batch();
     puts("PASS protocol server: single-driver permissions, negotiated driver-role events, stable promotion, schema validation, coalescing, atomic UI batch, flush marker, ACK and binary event queue");
     return 0;
