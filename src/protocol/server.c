@@ -619,6 +619,25 @@ static cdin_backend_status protocol_publish_batch(cdin_protocol_client *client,
         client->next_flush_sequence == UINT64_MAX)
         return CDIN_BACKEND_LIMIT_EXCEEDED;
     if (total_items > SIZE_MAX / sizeof(*prepared)) return CDIN_BACKEND_LIMIT_EXCEEDED;
+    if (has_revision && message_count != 0u) {
+        cdin_protocol_message_view *views;
+        cdin_protocol_status presentation_status;
+        views = (cdin_protocol_message_view *)calloc(message_count, sizeof(*views));
+        if (views == NULL) return CDIN_BACKEND_NO_MEMORY;
+        for (index = 0u; index < message_count; index++) {
+            views[index].major = CDIN_PROTOCOL_VERSION_MAJOR;
+            views[index].minor = CDIN_PROTOCOL_VERSION_MINOR;
+            views[index].sequence = 0u;
+            views[index].type = (cdin_protocol_message_type)messages[index].type;
+            views[index].name_space = NULL;
+            views[index].payload = messages[index].payload;
+            views[index].payload_length = messages[index].payload_length;
+        }
+        presentation_status = cdin_protocol_validate_presentation_batch(
+            views, message_count, revision);
+        free(views);
+        if (presentation_status != CDIN_PROTOCOL_OK) return CDIN_BACKEND_INVALID_ARGUMENT;
+    }
     prepared = (cdin_protocol_queued *)calloc(total_items, sizeof(*prepared));
     if (prepared == NULL) return CDIN_BACKEND_NO_MEMORY;
 
