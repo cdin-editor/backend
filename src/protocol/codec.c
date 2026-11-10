@@ -905,9 +905,6 @@ static int cbor_validate_ui_rgba(const uint8_t *data, size_t length)
 {
     static const char *const channels[] = { "r", "g", "b", "a" };
     size_t i;
-    cbor_item item;
-    int present;
-    if (!cbor_find_field(data, length, "__rgba__", &item, &present)) return 0;
     for (i = 0u; i < sizeof(channels) / sizeof(channels[0]); i++) {
         if (!cbor_field_uint_range(data, length, channels[i], 0u, 255u)) return 0;
     }
