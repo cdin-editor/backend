@@ -1233,16 +1233,16 @@ static int cbor_validate_ui_panel(const uint8_t *payload, size_t length,
 static int cbor_validate_ui_prompt(const uint8_t *payload, size_t length,
                                    size_t *out_widgets)
 {
+    const uint8_t *title = NULL;
+    size_t title_length = 0u;
     cbor_item widgets;
     cbor_item cancel;
     int present;
     if (length > 131072u ||
         !cbor_field_text_nonempty(payload, length, "id", 128u) ||
-        !cbor_field_text_value(payload, length, "title", (const uint8_t **)&widgets, (size_t *)&present)) {
-        /* title is allowed to be empty; validate it separately below. */
-        if (!cbor_optional_text(payload, length, "title", 16384u, 0)) return 0;
-    }
-    if (!cbor_optional_text(payload, length, "message", 16384u, 0) ||
+        !cbor_field_text_value(payload, length, "title", &title, &title_length) ||
+        title_length > 16384u ||
+        !cbor_optional_text(payload, length, "message", 16384u, 0) ||
         !cbor_optional_bool(payload, length, "visible") ||
         !cbor_find_field(payload, length, "widgets", &widgets, &present) ||
         !present || widgets.major != CBOR_MAJOR_ARRAY ||
