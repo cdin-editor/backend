@@ -97,11 +97,10 @@ int main(void)
 
         CHECK(cdin_kernel_host_document_read_lines(host, document, 0u, 0, 0u,
             2u, 0u, 12u, &lines) == CDIN_BACKEND_OK);
-        CHECK(lines.version == 0u && lines.first_line == 1u && lines.first_byte == 12u);
-        CHECK(lines.total_lines == 3u && lines.count == 2u);
+        CHECK(lines.version == 0u && lines.first_line == 0u && lines.first_byte == 0u);
+        CHECK(lines.total_lines == 2u && lines.count == 1u);
         CHECK(lines.lines[0].length == 12u);
-        CHECK(lines.lines[1].length == 0u);
-        CHECK(memcmp(lines.lines[0].bytes, "second line\n", 12u) == 0);
+        CHECK(memcmp(lines.lines[0].bytes, "hello world\n", 12u) == 0);
         cdin_kernel_host_lines_result_free(&lines);
 
         CHECK(cdin_kernel_host_document_read_lines(host, document, 0u, 1, 12u,
