@@ -166,6 +166,12 @@ static void test_semantic_schema_constraints(void)
                     0x61u, 'r', 0x19u, 0x01u, 0x00u,
         0x68u, 'r','e','v','i','s','i','o','n', 0x03u
     };
+    static const uint8_t ui_options_empty[] = {
+        0xa3u,
+        0x65u, 't','h','e','m','e', 0x64u, 'd','a','r','k',
+        0x67u, 'o','p','t','i','o','n','s', 0xa0u,
+        0x68u, 'r','e','v','i','s','i','o','n', 0x01u
+    };
     static const uint8_t ui_options_tab_width[] = {
         0xa3u,
         0x65u, 't','h','e','m','e', 0x64u, 'd','a','r','k',
