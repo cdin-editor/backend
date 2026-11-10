@@ -27,6 +27,8 @@ extern "C" {
 #define CDIN_PROTOCOL_CAP_IME_COMPOSITION (UINT64_C(1) << 11u)
 #define CDIN_PROTOCOL_CAP_IME_COMPOSITION_NAME "ime-composition/1"
 #define CDIN_PROTOCOL_IME_MAX_PREEDIT_BYTES 4096u
+#define CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES (UINT64_C(1) << 12u)
+#define CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES_NAME "byte-anchored-lines/1"
 
 typedef enum cdin_protocol_status {
     CDIN_PROTOCOL_OK = 0,
