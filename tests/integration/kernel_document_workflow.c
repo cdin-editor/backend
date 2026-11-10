@@ -106,12 +106,10 @@ int main(void)
         CHECK(cdin_kernel_host_document_read_lines(host, document, 0u, 1, 12u,
             2u, 0u, 12u, &lines) == CDIN_BACKEND_OK);
         CHECK(lines.first_line == 1u && lines.first_byte == 12u);
-        CHECK(lines.count == 1u && lines.lines[0].length == 12u);
-        cdin_kernel_host_lines_result_free(&lines);
+        CHECK(lines.count == 2u && lines.lines[0].length == 12u);
         CHECK(memcmp(lines.lines[0].bytes, "second line\n", 12u) == 0);
         CHECK(lines.lines[1].length == 0u); /* final empty line at EOF */
         cdin_kernel_host_lines_result_free(&lines);
-
         CHECK(cdin_kernel_host_document_read_lines(host, document, 0u, 1, 24u,
             1u, 0u, 64u, &lines) == CDIN_BACKEND_OK);
         CHECK(lines.first_line == 2u && lines.first_byte == 24u);
