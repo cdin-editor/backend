@@ -92,7 +92,7 @@ int main(void)
     }
     {
         cdin_host_lines_result lines;
-        static const uint8_t lone_cr_bytes[] = { 'a', '\\r', 'b', '\\r', 'c' };
+        static const uint8_t lone_cr_bytes[] = { 'a', '\r', 'b', '\r', 'c' };
         cdin_host_handle lone_cr_document = {0u, 0u};
 
         CHECK(cdin_kernel_host_document_read_lines(host, document, 0u, 0, 0u,
@@ -101,7 +101,7 @@ int main(void)
         CHECK(lines.total_lines == 3u && lines.count == 2u);
         CHECK(lines.lines[0].length == 12u);
         CHECK(lines.lines[1].length == 0u);
-        CHECK(memcmp(lines.lines[0].bytes, "second line\\n", 12u) == 0);
+        CHECK(memcmp(lines.lines[0].bytes, "second line\n", 12u) == 0);
         cdin_kernel_host_lines_result_free(&lines);
 
         CHECK(cdin_kernel_host_document_read_lines(host, document, 0u, 1, 12u,
@@ -126,7 +126,7 @@ int main(void)
             1u, 0u, 64u, &lines) == CDIN_BACKEND_OK);
         CHECK(lines.first_line == 1u && lines.first_byte == 2u);
         CHECK(lines.count == 1u && lines.lines[0].length == 2u);
-        CHECK(memcmp(lines.lines[0].bytes, "b\\r", 2u) == 0);
+        CHECK(memcmp(lines.lines[0].bytes, "b\r", 2u) == 0);
         cdin_kernel_host_lines_result_free(&lines);
         CHECK(cdin_kernel_host_document_close(host, lone_cr_document) == CDIN_BACKEND_OK);
     }
