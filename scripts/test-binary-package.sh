@@ -75,6 +75,15 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 test_root="${PIPELINE_ARTIFACT_TEST_DIR:-$repo_root/dist}"
 kernel_prefix="${KERNEL_PREFIX:-$repo_root/.deps/kernel}"
 logger_prefix="${LOGGER_PREFIX:-$repo_root/.deps/logger}"
+
+# GitHub Actions exposes runner.temp as a native Windows path (for example,
+# D:\\a\\_temp\\...). GNU tar treats a drive-letter path as remote-host
+# syntax, so normalize the artifact directory before find emits the archive
+# path that is later passed to tar.
+if command -v cygpath >/dev/null 2>&1; then
+  test_root="$(cygpath -u "$test_root")"
+fi
+
 archive="$(find "$test_root" -maxdepth 2 -type f -name 'cdin-backend-*.tar.gz' ! -name '*-source.tar.gz' -print | sort | head -n 1)"
 [[ -n "$archive" ]] || {
   echo "No cdin-backend target archive found under $test_root" >&2
