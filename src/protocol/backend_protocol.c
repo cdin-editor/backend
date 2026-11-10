@@ -211,11 +211,14 @@ static cdin_backend_status queue_hello_ack(cdin_backend_frontend *frontend,
         int has_driver_events = (ack->accepted_capabilities & CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS) != 0u;
         int has_pane_splitter = (ack->accepted_capabilities & CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE) != 0u;
         int has_ime_composition = (ack->accepted_capabilities & CDIN_PROTOCOL_CAP_IME_COMPOSITION) != 0u;
+        int has_byte_anchored_lines = (ack->accepted_capabilities & CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES) != 0u;
         payload[offset++] = (uint8_t)(0x80u + (unsigned)has_driver_events +
-                                     (unsigned)has_pane_splitter + (unsigned)has_ime_composition);
+                                     (unsigned)has_pane_splitter + (unsigned)has_ime_composition +
+                                     (unsigned)has_byte_anchored_lines);
         if (has_driver_events) offset += cbor_write_text(payload + offset, CDIN_PROTOCOL_CAP_DRIVER_ROLE_EVENTS_NAME);
         if (has_pane_splitter) offset += cbor_write_text(payload + offset, CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE_NAME);
         if (has_ime_composition) offset += cbor_write_text(payload + offset, CDIN_PROTOCOL_CAP_IME_COMPOSITION_NAME);
+        if (has_byte_anchored_lines) offset += cbor_write_text(payload + offset, CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES_NAME);
     }
 #undef WRITE_KEY
     memset(&message, 0, sizeof(message));
@@ -274,7 +277,10 @@ static cdin_backend_status receive_hello(cdin_backend_frontend *frontend,
              ? CDIN_PROTOCOL_CAP_PANE_SPLITTER_RESIZE : 0u) |
         (capability_requested(capabilities_array, capabilities_array_length,
                               CDIN_PROTOCOL_CAP_IME_COMPOSITION_NAME)
-             ? CDIN_PROTOCOL_CAP_IME_COMPOSITION : 0u);
+             ? CDIN_PROTOCOL_CAP_IME_COMPOSITION : 0u) |
+        (capability_requested(capabilities_array, capabilities_array_length,
+                              CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES_NAME)
+             ? CDIN_PROTOCOL_CAP_BYTE_ANCHORED_LINES : 0u);
     status = cdin_protocol_hello_accept((cdin_protocol_client *)frontend, &hello, &ack);
     if (status != CDIN_BACKEND_OK) return status;
     public_ack.major = ack.major;
