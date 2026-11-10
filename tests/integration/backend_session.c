@@ -107,12 +107,24 @@ static int test_running_session_and_protocol(log_capture *logs)
                                        0x64u, 'r','o','o','t', 0xf6u,
                                        0x6bu, 'a','c','t','i','v','e','_','l','e','a','f', 0xf6u,
                                        0x68u, 'r','e','v','i','s','i','o','n', 0x02u };
-    const uint8_t other_payload[] = { 0xa3u, 0x65u, 'p','a','n','e','l', 0xa0u,
-                                      0x68u, 'p','a','n','e','l','_','i','d', 0x61u, 'x',
-                                      0x68u, 'r','e','v','i','s','i','o','n', 0x01u };
-    const uint8_t third_payload[] = { 0xa3u, 0x65u, 'p','a','n','e','l', 0xa0u,
-                                      0x68u, 'p','a','n','e','l','_','i','d', 0x61u, 'y',
-                                      0x68u, 'r','e','v','i','s','i','o','n', 0x02u };
+    const uint8_t other_payload[] = {
+        0xa3u,
+        0x65u, 'p','a','n','e','l', 0xa3u,
+            0x64u, 'k','i','n','d', 0x64u, 'l','i','s','t',
+            0x65u, 't','i','t','l','e', 0x60u,
+            0x67u, 'w','i','d','g','e','t','s', 0x80u,
+        0x68u, 'p','a','n','e','l','_','i','d', 0x61u, 'x',
+        0x68u, 'r','e','v','i','s','i','o','n', 0x01u
+    };
+    const uint8_t third_payload[] = {
+        0xa3u,
+        0x65u, 'p','a','n','e','l', 0xa3u,
+            0x64u, 'k','i','n','d', 0x64u, 'l','i','s','t',
+            0x65u, 't','i','t','l','e', 0x60u,
+            0x67u, 'w','i','d','g','e','t','s', 0x80u,
+        0x68u, 'p','a','n','e','l','_','i','d', 0x61u, 'y',
+        0x68u, 'r','e','v','i','s','i','o','n', 0x02u
+    };
     const uint8_t paste_payload[] = { 0xa1u, 0x65u, 'b','y','t','e','s', 0x42u, 0x00u, 0xffu };
     const uint8_t ack_payload[] = { 0xa1u, 0x68u, 's','e','q','u','e','n','c','e', 0x01u };
     const uint8_t text_payload[] = { 0xa1u, 0x64u, 't','e','x','t', 0x61u, 'x' };

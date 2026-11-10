@@ -116,6 +116,9 @@ int cdin_protocol_message_requires_driver(cdin_protocol_message_type type);
 cdin_protocol_status cdin_protocol_validate_payload(cdin_protocol_message_type type,
                                                      const uint8_t *payload,
                                                      size_t payload_length);
+/* Validate presentation messages as one revision-pinned atomic snapshot group. */
+cdin_protocol_status cdin_protocol_validate_presentation_batch(
+    const cdin_protocol_message_view *messages, size_t message_count, uint64_t revision);
 cdin_protocol_status cdin_protocol_payload_get_uint(const uint8_t *payload,
                                                     size_t payload_length,
                                                     const char *field,
