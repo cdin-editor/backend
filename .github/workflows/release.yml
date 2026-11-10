@@ -21,6 +21,12 @@ jobs:
       test-command: bash scripts/release-test.sh
       build-command: bash scripts/package-binary.sh
       artifact-test-command: bash scripts/test-binary-package.sh
+      asset-preparation-command: >-
+        python3 scripts/generate-release-metadata.py
+        --tag "$PIPELINE_RELEASE_TAG"
+        --source-revision "$PIPELINE_SOURCE_SHA"
+        --artifact-dir "$RELEASE_ASSETS_DIRECTORY"
+        --output "$RELEASE_ASSETS_DIRECTORY/release-build-metadata/backend-$PIPELINE_RELEASE_VERSION.json"
       artifact-path: |
         dist/cdin-backend-*.tar.gz
         dist/cdin-backend-*.tar.gz.sha256

@@ -5,10 +5,15 @@ All notable changes to CDIN Backend are documented in this file.
 The format follows [Keep a Changelog].
 Versioning follows [Semantic Versioning].
 
-The `1.2.1` entry describes the next Backend package candidate. The Registry
-Catalog continues to select the immutable `1.2.0` package until the matching
-tag, all five native artifacts, their checksums, and the new release metadata
-have been published and verified.
+## [Unreleased]
+
+### Changed
+
+- Generate Backend Component Release Metadata as an untracked canonical
+  `backend-<version>.json` GitHub Release Asset using schema 1.2.x and exact
+  ADR-0028 publication provenance. Verify the full tagged commit and collect
+  all five target packages from Pipeline's post-matrix asset preparation hook;
+  retain historical tracked metadata and releases unchanged.
 
 ## [1.2.1] - 2026-11-10
 

@@ -11,7 +11,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts" / "generate-release-metadata.py"
-REVISION = "a" * 40
 TAG = "v1.2.1"
 TARGETS = (
     ("linux", "x86_64", "gnu-glibc-2.39"),
@@ -22,27 +21,51 @@ TARGETS = (
 )
 
 
-def run_generator(artifact_dir: Path, output: Path) -> subprocess.CompletedProcess[str]:
+def run_generator(
+    artifact_dir: Path,
+    output: Path,
+    source_repo: Path,
+    *,
+    source_revision: str = "",
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        str(GENERATOR),
+        "--tag",
+        TAG,
+        "--artifact-dir",
+        str(artifact_dir),
+        "--output",
+        str(output),
+    ]
+    if source_revision:
+        command.extend(["--source-revision", source_revision])
     return subprocess.run(
-        [
-            sys.executable,
-            str(GENERATOR),
-            "--tag",
-            TAG,
-            "--source-revision",
-            REVISION,
-            "--artifact-dir",
-            str(artifact_dir),
-            "--output",
-            str(output),
-        ],
+        command,
+        cwd=source_repo,
         capture_output=True,
         text=True,
         check=False,
     )
 
 
-def prepare_descriptors(artifact_dir: Path) -> None:
+def prepare_source_repo(source_repo: Path) -> str:
+    source_repo.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q"], cwd=source_repo, check=True)
+    subprocess.run(["git", "config", "user.name", "CDIN Test"], cwd=source_repo, check=True)
+    subprocess.run(["git", "config", "user.email", "cdin-test@example.invalid"], cwd=source_repo, check=True)
+    (source_repo / "README.md").write_text("Backend metadata fixture\\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=source_repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "test: prepare source identity"], cwd=source_repo, check=True)
+    subprocess.run(["git", "tag", TAG], cwd=source_repo, check=True)
+    return subprocess.check_output(
+        ["git", "rev-parse", "--verify", f"{TAG}^{{commit}}"],
+        cwd=source_repo,
+        text=True,
+    ).strip()
+
+
+def prepare_descriptors(artifact_dir: Path, revision: str) -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
     for target_os, architecture, abi in TARGETS:
         artifact_id = f"backend-{target_os}-{architecture.replace('_', '-')}-{abi}"
@@ -50,15 +73,17 @@ def prepare_descriptors(artifact_dir: Path) -> None:
             f"cdin-backend-1.2.1-{target_os}-{architecture.replace('_', '-')}-{abi}.tar.gz"
         )
         uri = f"https://github.com/cdin-editor/backend/releases/download/{TAG}/{filename}"
-        archive = artifact_dir / filename
+        target_dir = artifact_dir / f"release-build-{target_os}-{architecture}" / "dist"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        archive = target_dir / filename
         payload = f"native-artifact:{target_os}:{architecture}:{abi}".encode("ascii")
         archive.write_bytes(payload)
         digest = hashlib.sha256(payload).hexdigest()
-        (artifact_dir / (filename + ".sha256")).write_text(
+        (target_dir / (filename + ".sha256")).write_text(
             f"{digest}  {filename}\n", encoding="ascii"
         )
         descriptor = {
-            "source_revision": REVISION,
+            "source_revision": revision,
             "artifact": {
                 "artifact_id": artifact_id,
                 "kind": "native-development-package",
@@ -84,7 +109,7 @@ def prepare_descriptors(artifact_dir: Path) -> None:
                 },
             },
         }
-        (artifact_dir / (filename + ".artifact.json")).write_text(
+        (target_dir / (filename + ".artifact.json")).write_text(
             json.dumps(descriptor, indent=2) + "\n", encoding="utf-8"
         )
 
@@ -92,11 +117,13 @@ def prepare_descriptors(artifact_dir: Path) -> None:
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="backend-release-metadata-") as temporary:
         root = Path(temporary)
+        source_repo = root / "source"
+        revision = prepare_source_repo(source_repo)
         artifact_dir = root / "assets"
-        output = root / "backend-1.2.1.json"
-        prepare_descriptors(artifact_dir)
+        output = artifact_dir / "release-build-metadata" / "backend-1.2.1.json"
+        prepare_descriptors(artifact_dir, revision)
 
-        success = run_generator(artifact_dir, output)
+        success = run_generator(artifact_dir, output, source_repo, source_revision=revision)
         if success.returncode != 0:
             raise AssertionError(
                 "valid five-target descriptors were rejected:\n"
@@ -105,9 +132,17 @@ def main() -> int:
             )
 
         metadata = json.loads(output.read_text(encoding="utf-8"))
-        assert metadata["schema_version"] == "1.1.0"
+        assert metadata["schema_version"] == "1.2.0"
         assert metadata["version"] == "1.2.1"
-        assert metadata["source_units"][0]["revision"] == REVISION
+        assert metadata["source_units"][0]["revision"] == revision
+        assert metadata["publication"] == {
+            "provider": "github-releases-v1",
+            "repository_uri": "https://github.com/cdin-editor/backend",
+            "tag": TAG,
+            "tag_commit": revision,
+            "metadata_asset_name": "backend-1.2.1.json",
+        }
+        assert output.name == metadata["publication"]["metadata_asset_name"]
         assert len(metadata["artifacts"]) == len(TARGETS)
         assert {item["target"]["os"] for item in metadata["artifacts"]} == {
             "linux",
@@ -126,17 +161,28 @@ def main() -> int:
             "org.lua.puc-lua-c-api",
         }
 
-        overwrite = run_generator(artifact_dir, output)
+        overwrite = run_generator(artifact_dir, output, source_repo, source_revision=revision)
         assert overwrite.returncode != 0
         assert "refusing to overwrite immutable release metadata" in (
             overwrite.stdout + overwrite.stderr
         )
 
-        corrupted = next(artifact_dir.glob("cdin-backend-*.tar.gz"))
+        corrupted = next(artifact_dir.rglob("cdin-backend-*.tar.gz"))
         corrupted.write_bytes(corrupted.read_bytes() + b"tampered")
-        mismatch = run_generator(artifact_dir, root / "should-not-exist.json")
+        mismatch = run_generator(artifact_dir, artifact_dir / "release-build-metadata" / "backend-1.2.1.json.tmp", source_repo, source_revision=revision)
         assert mismatch.returncode != 0
         assert "digest mismatch" in mismatch.stdout + mismatch.stderr
+
+        wrong_revision = run_generator(
+            artifact_dir,
+            artifact_dir / "release-build-metadata" / "backend-1.2.1.json",
+            source_repo,
+            source_revision="b" * len(revision),
+        )
+        assert wrong_revision.returncode != 0
+        assert "does not match the exact tag-resolved commit" in (
+            wrong_revision.stdout + wrong_revision.stderr
+        )
 
     print("Backend release metadata generator: all checks passed")
     return 0
