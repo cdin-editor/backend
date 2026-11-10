@@ -1,4 +1,4 @@
-## [1.2.1]
+## [1.2.1] - 2026-11-10
 
 ### Added
 
@@ -29,12 +29,10 @@
 > is committed. This changelog section prepares the release notes; it does
 > not itself create a tag, release or Catalog update.
 
-## [Unreleased]
 
-### Follow-up
+### Additional changes
 
-- Publish the five target artifacts and then add the generated metadata to
-  the Registry Catalog and CDIN Product Definitions. These are separate
+the Registry Catalog and CDIN Product Definitions. These are separate
   changes after the release assets have been verified.
 
 - Correct the Protocol server regression test to expect the reattach role notification at the next per-connection frame sequence after the earlier promotion event.
