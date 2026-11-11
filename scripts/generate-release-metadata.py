@@ -56,6 +56,14 @@ def main() -> int:
         raise SystemExit("tag-resolved source revision must be a full Git object ID")
     if args.source_revision and args.source_revision.lower() != tag_revision.lower():
         raise SystemExit("provided source revision does not match the exact tag-resolved commit")
+    head_revision = subprocess.check_output(
+        ["git", "rev-parse", "--verify", "HEAD"], text=True
+    ).strip()
+    if head_revision != tag_revision:
+        raise SystemExit(
+            f"refusing to publish metadata from HEAD {head_revision}; "
+            f"exact tag {tag} resolves to {tag_revision}"
+        )
     revision = tag_revision
 
     artifact_root = args.artifact_dir.expanduser().resolve()
