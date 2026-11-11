@@ -13,7 +13,7 @@ source "$repo_root/deps.lock"
 
 tag="${PIPELINE_RELEASE_TAG:-${GITHUB_REF_NAME:-}}"
 [[ -n "$tag" ]] || {
-  echo "PIPELINE_RELEASE_TAG is required (for example v1.2.1)." >&2
+  echo "PIPELINE_RELEASE_TAG is required (for example v1.2.2)." >&2
   exit 2
 }
 version="${tag#v}"
