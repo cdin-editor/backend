@@ -64,7 +64,7 @@ matching Kernel package, the separately pinned m-mdy-m/log.c SDK and Lua 5.4 pac
 cmake_minimum_required(VERSION 3.22)
 project(my_cdin_host LANGUAGES C)
 
-find_package(cdinBackend 1.2.1 EXACT CONFIG REQUIRED)
+find_package(cdinBackend 1.2.2 EXACT CONFIG REQUIRED)
 
 add_executable(my_cdin_host main.c)
 target_link_libraries(my_cdin_host PRIVATE cdin::backend)
@@ -97,17 +97,19 @@ cdin-protocol.
 
 ## Release identity and Registry metadata
 
-The existing Backend 1.2.0 source-only metadata and Catalog entry remain
-immutable. The 1.2.1 release creates five native assets and a source archive.
-Each native build writes a sibling *.artifact.json descriptor with its real
-asset URI, digest, byte count, target tuple and build provenance.
+The published Backend 1.2.0 and 1.2.1 identities and their Catalog
+metadata remain immutable. The next package identity is 1.2.2. Its release
+workflow creates five native target archives and descriptors, then generates
+the canonical `backend-1.2.2.json` Component Release Metadata Release Asset
+from the exact tagged source revision. Pipeline includes that JSON with the
+package archives and checksum inventory; the generator validates the tag
+identity, all five targets, archive URIs, sizes and SHA-256 sidecars.
 
-Only after every release asset has been published should the exact descriptors,
-archives and checksum sidecars be passed to scripts/generate-release-metadata.py.
-The generated 1.1.x Component Release Metadata is validated and added as a new
-Catalog identity. It removes the Kernel component edge while retaining Kernel
-ABI, logger C API and Lua 5.4 as separate environment contracts; Runtime
-remains a component dependency. See registry/README.md.
+The schema 1.2.0 metadata removes the Kernel component edge while retaining
+Kernel ABI, logger C API and Lua 5.4 as separate environment contracts;
+Runtime remains a component dependency. Registry discovers the canonical
+metadata asset through the accepted ADR-0028 Release Source mechanism. See
+registry/README.md.
 
 Registry 1.3.0 verifies and extracts the archive without running package
 scripts. CDIN owns dependency provisioning, linking, product tests and launch.
