@@ -111,7 +111,7 @@ Runtime remains a component dependency. Registry discovers the canonical
 metadata asset through the accepted ADR-0028 Release Source mechanism. See
 registry/README.md.
 
-Registry 1.3.0 verifies and extracts the archive without running package
-scripts. CDIN owns dependency provisioning, linking, product tests and launch.
+Registry Data Contract 1.4.0 verifies and extracts the archive without
+running package scripts, including the exact ADR-0028 publication identity. CDIN owns dependency provisioning, linking, product tests and launch.
 Artifact delivery alone does not prove live product integration or production
 GUI readiness.
