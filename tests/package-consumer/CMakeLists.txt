@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(cdin_backend_external_consumer LANGUAGES C)
 
-find_package(cdinBackend 1.2.1 EXACT CONFIG REQUIRED)
+find_package(cdinBackend 1.2.2 EXACT CONFIG REQUIRED)
 
 add_executable(cdin_backend_external_consumer main.c)
 target_compile_features(cdin_backend_external_consumer PRIVATE c_std_11)
