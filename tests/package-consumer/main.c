@@ -13,6 +13,6 @@ int main(void)
     if (config.struct_size < sizeof(cdin_backend_config)) return 1;
     if (version == NULL) return 2;
     if (strcmp(version, CDIN_BACKEND_VERSION_STRING) != 0) return 3;
-    if (strcmp(version, "1.2.1") != 0) return 4;
+    if (strcmp(version, "1.2.2") != 0) return 4;
     return 0;
 }

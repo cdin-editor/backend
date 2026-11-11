@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts" / "generate-release-metadata.py"
-TAG = "v1.2.1"
+TAG = "v1.2.2"
 TARGETS = (
     ("linux", "x86_64", "gnu-glibc-2.39"),
     ("linux", "arm64", "gnu-glibc-2.39"),
@@ -70,7 +70,7 @@ def prepare_descriptors(artifact_dir: Path, revision: str) -> None:
     for target_os, architecture, abi in TARGETS:
         artifact_id = f"backend-{target_os}-{architecture.replace('_', '-')}-{abi}"
         filename = (
-            f"cdin-backend-1.2.1-{target_os}-{architecture.replace('_', '-')}-{abi}.tar.gz"
+            f"cdin-backend-1.2.2-{target_os}-{architecture.replace('_', '-')}-{abi}.tar.gz"
         )
         uri = f"https://github.com/cdin-editor/backend/releases/download/{TAG}/{filename}"
         target_dir = artifact_dir / f"release-build-{target_os}-{architecture}" / "dist"
@@ -120,7 +120,7 @@ def main() -> int:
         source_repo = root / "source"
         revision = prepare_source_repo(source_repo)
         artifact_dir = root / "assets"
-        output = artifact_dir / "release-build-metadata" / "backend-1.2.1.json"
+        output = artifact_dir / "release-build-metadata" / "backend-1.2.2.json"
         prepare_descriptors(artifact_dir, revision)
 
         success = run_generator(artifact_dir, output, source_repo, source_revision=revision)
@@ -133,14 +133,14 @@ def main() -> int:
 
         metadata = json.loads(output.read_text(encoding="utf-8"))
         assert metadata["schema_version"] == "1.2.0"
-        assert metadata["version"] == "1.2.1"
+        assert metadata["version"] == "1.2.2"
         assert metadata["source_units"][0]["revision"] == revision
         assert metadata["publication"] == {
             "provider": "github-releases-v1",
             "repository_uri": "https://github.com/cdin-editor/backend",
             "tag": TAG,
             "tag_commit": revision,
-            "metadata_asset_name": "backend-1.2.1.json",
+            "metadata_asset_name": "backend-1.2.2.json",
         }
         assert output.name == metadata["publication"]["metadata_asset_name"]
         assert len(metadata["artifacts"]) == len(TARGETS)
@@ -169,13 +169,13 @@ def main() -> int:
 
         corrupted = next(artifact_dir.rglob("cdin-backend-*.tar.gz"))
         corrupted.write_bytes(corrupted.read_bytes() + b"tampered")
-        mismatch = run_generator(artifact_dir, artifact_dir / "release-build-metadata" / "backend-1.2.1.json.tmp", source_repo, source_revision=revision)
+        mismatch = run_generator(artifact_dir, artifact_dir / "release-build-metadata" / "backend-1.2.2.json.tmp", source_repo, source_revision=revision)
         assert mismatch.returncode != 0
         assert "digest mismatch" in mismatch.stdout + mismatch.stderr
 
         wrong_revision = run_generator(
             artifact_dir,
-            artifact_dir / "release-build-metadata" / "backend-1.2.1.json",
+            artifact_dir / "release-build-metadata" / "backend-1.2.2.json",
             source_repo,
             source_revision="b" * len(revision),
         )
@@ -193,7 +193,7 @@ def main() -> int:
         )
         wrong_head = run_generator(
             artifact_dir,
-            artifact_dir / "release-build-metadata" / "backend-1.2.1-head-mismatch.json",
+            artifact_dir / "release-build-metadata" / "backend-1.2.2-head-mismatch.json",
             source_repo,
             source_revision=revision,
         )

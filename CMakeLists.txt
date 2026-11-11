@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(cdin_backend VERSION 1.2.1 LANGUAGES C)
+project(cdin_backend VERSION 1.2.2 LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CTest)

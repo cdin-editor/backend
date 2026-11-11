@@ -115,7 +115,7 @@ jobs:
           BACKEND_TARGET_ARCH="$target_arch" \
           BACKEND_TARGET_ABI="$target_abi" \
           BACKEND_TARGET_RUNNER="github-actions-$target_os-$target_arch" \
-          PIPELINE_RELEASE_TAG=v1.2.1 \
+          PIPELINE_RELEASE_TAG=v1.2.2 \
             bash scripts/package-binary.sh
           bash scripts/test-binary-package.sh
       - if: matrix.os == 'windows-latest'
@@ -134,7 +134,7 @@ jobs:
           BACKEND_TARGET_ARCH=x86_64 \
           BACKEND_TARGET_ABI=windows-ucrt64 \
           BACKEND_TARGET_RUNNER=github-actions-windows-ucrt64 \
-          PIPELINE_RELEASE_TAG=v1.2.1 \
+          PIPELINE_RELEASE_TAG=v1.2.2 \
             bash scripts/package-binary.sh
           # Simulate the native Windows runner.temp path used after
           # actions/download-artifact in the shared release workflow.

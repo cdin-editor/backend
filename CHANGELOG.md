@@ -7,13 +7,16 @@ Versioning follows [Semantic Versioning].
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-11
+
 ### Changed
 
-- Generate Backend Component Release Metadata as an untracked canonical
-  `backend-<version>.json` GitHub Release Asset using schema 1.2.x and exact
-  ADR-0028 publication provenance. Verify the full tagged commit and collect
-  all five target packages from Pipeline's post-matrix asset preparation hook;
-  retain historical tracked metadata and releases unchanged.
+- Generate Backend Component Release Metadata as the canonical, untracked
+  `backend-1.2.2.json` GitHub Release Asset using schema 1.2.0 and the exact
+  ADR-0028 publication identity. Verify the tag-resolved source commit and
+  collect all five target packages from Pipeline's post-matrix asset
+  preparation hook. Historical 1.2.0 and 1.2.1 metadata and Release assets
+  remain immutable.
 
 ## [1.2.1] - 2026-11-10
 

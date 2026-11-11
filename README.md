@@ -42,12 +42,14 @@ Kernel header.
 
 ## Current status
 
-This repository currently prepares Backend package version `1.2.1` as the next
-artifact-delivery candidate. The existing `1.2.0` source identity remains
-immutable in the CDIN Catalog and is still the selected integration package
-until the new target-specific assets and Registry metadata are published. The
-`1.2.1` release workflow is tag-driven and does not become an active Catalog
-candidate merely because its build workflow passes.
+The next package identity prepared by the release publisher is
+`1.2.2`. The published `1.2.1` release predates the ADR-0028 publisher
+merge and remains immutable; its five native package assets are not retrofitted
+with a canonical metadata asset. The `1.2.2` tag workflow will build and verify
+all five target packages, then generate the canonical
+`backend-1.2.2.json` Release Asset from that exact tag commit. It does not
+become an active Catalog candidate until the Release assets are published and
+Registry discovers the metadata.
 
 The package provides the shared Frontend Protocol 1.0.0 codec/server, reusable
 OS/job services, Kernel adapter, PUC Lua 5.4 bridge, Runtime UI-model
