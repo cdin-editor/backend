@@ -184,6 +184,24 @@ def main() -> int:
             wrong_revision.stdout + wrong_revision.stderr
         )
 
+        (source_repo / "after-tag.txt").write_text("unreleased change\\n", encoding="utf-8")
+        subprocess.run(["git", "add", "after-tag.txt"], cwd=source_repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "test: advance checkout after immutable tag"],
+            cwd=source_repo,
+            check=True,
+        )
+        wrong_head = run_generator(
+            artifact_dir,
+            artifact_dir / "release-build-metadata" / "backend-1.2.1-head-mismatch.json",
+            source_repo,
+            source_revision=revision,
+        )
+        assert wrong_head.returncode != 0
+        assert "refusing to publish metadata from HEAD" in (
+            wrong_head.stdout + wrong_head.stderr
+        )
+
     print("Backend release metadata generator: all checks passed")
     return 0
 
