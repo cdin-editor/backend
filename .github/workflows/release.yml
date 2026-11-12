@@ -14,9 +14,9 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: m-mdy-m/pipeline/.github/workflows/release.yml@main
+    uses: m-mdy-m/pipeline/.github/workflows/release.yml@eae4979972be66358646c0a94c99e02127ae0563
     with:
-      pipeline-ref: main
+      pipeline-ref: eae4979972be66358646c0a94c99e02127ae0563
       changelog-path: CHANGELOG.md
       test-command: bash scripts/release-test.sh
       build-command: bash scripts/package-binary.sh
