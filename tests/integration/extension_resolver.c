@@ -249,8 +249,10 @@ cleanup:
 static int test_resolver(void)
 {
     char temp[512] = { 0 };
-    char root[640], demo[640], helpers[640], large[640], outside[640];
+    char root[640], demo[640], helpers[640], large[640], outside[640], ambiguous[640];
     char path[768] = { 0 }, link_path[768] = { 0 }, secret_file[768] = { 0 };
+    char single_file_path[768] = { 0 }, ambiguous_file_path[768] = { 0 };
+    char ambiguous_init_path[768] = { 0 }, single_link_path[768] = { 0 };
     char read_failure_path[768] = { 0 };
     static const char init_source[] = "return { init = function() end }";
     static const char greeting_source[] = "return { value = 'hello' }\n";
@@ -262,6 +264,7 @@ static int test_resolver(void)
     lua_State *L = NULL;
     int resolver_ref = LUA_NOREF;
     int symlink_created = 0;
+    int single_symlink_created = 0;
     int collision_created = 0;
     int result = 1;
 
@@ -271,10 +274,16 @@ static int test_resolver(void)
         join_path(helpers, sizeof(helpers), demo, "helpers") != 0 ||
         join_path(large, sizeof(large), demo, "large") != 0 ||
         join_path(outside, sizeof(outside), temp, "outside") != 0 ||
+        join_path(ambiguous, sizeof(ambiguous), root, "ambiguous") != 0 ||
+        join_path(single_file_path, sizeof(single_file_path), root, "single.lua") != 0 ||
+        join_path(ambiguous_file_path, sizeof(ambiguous_file_path), root, "ambiguous.lua") != 0 ||
+        join_path(ambiguous_init_path, sizeof(ambiguous_init_path), ambiguous, "init.lua") != 0 ||
+        join_path(single_link_path, sizeof(single_link_path), root, "linked-single.lua") != 0 ||
         join_path(secret_file, sizeof(secret_file), outside, "secret.lua") != 0 ||
         join_path(read_failure_path, sizeof(read_failure_path), demo, "read_failure.lua") != 0 ||
         make_dir(root) != 0 || make_dir(demo) != 0 ||
-        make_dir(helpers) != 0 || make_dir(large) != 0 || make_dir(outside) != 0) {
+        make_dir(helpers) != 0 || make_dir(large) != 0 ||
+        make_dir(outside) != 0 || make_dir(ambiguous) != 0) {
         (void)fprintf(stderr, "could not create extension resolver test tree\n");
         goto cleanup_temp;
     }
@@ -289,6 +298,9 @@ static int test_resolver(void)
         write_bytes(path, small_source, sizeof(small_source) - 1u) != 0 ||
         join_path(path, sizeof(path), demo, "binary.lua") != 0 ||
         write_bytes(path, binary_source, sizeof(binary_source)) != 0 ||
+        write_bytes(single_file_path, init_source, sizeof(init_source) - 1u) != 0 ||
+        write_bytes(ambiguous_file_path, init_source, sizeof(init_source) - 1u) != 0 ||
+        write_bytes(ambiguous_init_path, init_source, sizeof(init_source) - 1u) != 0 ||
         write_bytes(secret_file, small_source, sizeof(small_source) - 1u) != 0 ||
         write_bytes(read_failure_path, small_source, sizeof(small_source) - 1u) != 0 ||
         join_path(path, sizeof(path), large, "another.lua") != 0 ||
@@ -297,7 +309,7 @@ static int test_resolver(void)
         goto cleanup_tree;
     }
 
-    if (setup_host(&backend, &host, root, 48u, 5u) != 0) {
+    if (setup_host(&backend, &host, root, 48u, 6u) != 0) {
         (void)fprintf(stderr, "could not initialize extension resolver\n");
         goto cleanup_tree;
     }
@@ -328,6 +340,13 @@ static int test_resolver(void)
         resolve_module(L, resolver_ref, "../outside", "init",
                        NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR ||
         resolve_module(L, resolver_ref, "demo", "../outside",
+                       NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR ||
+        resolve_module(L, resolver_ref, "single", "init",
+                       (const uint8_t *)init_source, sizeof(init_source) - 1u,
+                       "extension://single/init", NULL) != RESOLVER_CALL_OK ||
+        resolve_module(L, resolver_ref, "single", "helpers.greeting",
+                       NULL, 0u, NULL, NULL) != RESOLVER_CALL_MISSING ||
+        resolve_module(L, resolver_ref, "ambiguous", "init",
                        NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR) {
         goto cleanup_host_and_tree;
     }
@@ -347,6 +366,18 @@ static int test_resolver(void)
 #endif
     if (symlink_created &&
         resolve_module(L, resolver_ref, "demo", "linked",
+                       NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR) {
+        goto cleanup_host_and_tree;
+    }
+#ifdef _WIN32
+    if (CreateSymbolicLinkA(single_link_path, secret_file, 0x2u)) {
+        single_symlink_created = 1;
+    }
+#else
+    if (symlink(secret_file, single_link_path) == 0) single_symlink_created = 1;
+#endif
+    if (single_symlink_created &&
+        resolve_module(L, resolver_ref, "linked-single", "init",
                        NULL, 0u, NULL, "PERMISSION_DENIED") != RESOLVER_CALL_ERROR) {
         goto cleanup_host_and_tree;
     }
@@ -393,9 +424,9 @@ static int test_resolver(void)
         goto cleanup_host_and_tree;
     }
 
-    /* Five successful reads are init, repeated init, nested greeting,
-     * binary source and large.small. Missing, oversized and unreadable reads
-     * consume no slot; the next successful source read exceeds the budget. */
+    /* Six successful reads are directory init (twice), nested greeting,
+     * binary source, single-file init and large.small. Missing, ambiguous,
+     * oversized and unreadable reads consume no slot. */
     if (resolve_module(L, resolver_ref, "demo", "large.small",
                        (const uint8_t *)small_source, sizeof(small_source) - 1u,
                        "extension://demo/large.small", NULL) != RESOLVER_CALL_OK ||
@@ -425,6 +456,10 @@ static int test_resolver(void)
     (void)join_path(path, sizeof(path), large, "small.lua"); (void)remove_file(path);
     (void)join_path(path, sizeof(path), large, "another.lua"); (void)remove_file(path);
     (void)join_path(path, sizeof(path), demo, "binary.lua"); (void)remove_file(path);
+    (void)remove_file(single_file_path);
+    (void)remove_file(ambiguous_file_path);
+    (void)remove_file(ambiguous_init_path);
+    (void)remove_file(single_link_path);
     (void)remove_file(secret_file);
     if (read_failure_path[0] != '\0') {
         (void)chmod(read_failure_path, 0600);
@@ -436,12 +471,14 @@ static int test_resolver(void)
     (void)join_path(path, sizeof(path), demo, "case.lua");
     (void)remove_file(path);
     if (symlink_created) (void)remove_file(link_path);
+    if (single_symlink_created) (void)remove_file(single_link_path);
     if (collision_created) {
         (void)join_path(path, sizeof(path), demo, "Case.lua"); (void)remove_file(path);
         (void)join_path(path, sizeof(path), demo, "case.lua"); (void)remove_file(path);
     }
     (void)remove_dir(helpers);
     (void)remove_dir(large);
+    (void)remove_dir(ambiguous);
     (void)remove_dir(demo);
     (void)remove_dir(outside);
     (void)remove_dir(root);
