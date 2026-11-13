@@ -314,6 +314,100 @@ static resolver_result windows_open_child_directory(cdin_lua_host *host,
     return RESOLVER_OK;
 }
 
+static resolver_result windows_read_regular_file(cdin_lua_host *host,
+                                                  const wchar_t *parent,
+                                                  const char *file_component,
+                                                  char **out_source,
+                                                  size_t *out_length)
+{
+    wchar_t *path = NULL;
+    HANDLE handle = INVALID_HANDLE_VALUE;
+    BY_HANDLE_FILE_INFORMATION info;
+    uint64_t size;
+    size_t total = 0u;
+    char *source = NULL;
+    resolver_result result;
+
+    if (host == NULL || parent == NULL || file_component == NULL ||
+        out_source == NULL || out_length == NULL) return RESOLVER_IO;
+    *out_source = NULL;
+    *out_length = 0u;
+
+    result = windows_check_exact_name(parent, file_component);
+    if (result != RESOLVER_OK) return result;
+    path = append_wide_component(parent, file_component);
+    if (path == NULL) return RESOLVER_NO_MEMORY;
+
+    handle = CreateFileW(path, GENERIC_READ | FILE_READ_ATTRIBUTES,
+                         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                         NULL, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+    if (handle == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError();
+        result = (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND)
+            ? RESOLVER_NOT_FOUND : RESOLVER_IO;
+        goto done;
+    }
+    if (!GetFileInformationByHandle(handle, &info)) {
+        result = RESOLVER_IO;
+        goto done;
+    }
+    if ((info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0u ||
+        info.nNumberOfLinks != 1u) {
+        result = RESOLVER_DENIED;
+        goto done;
+    }
+    result = verify_handle_path(host, handle);
+    if (result != RESOLVER_OK) goto done;
+
+    size = ((uint64_t)info.nFileSizeHigh << 32u) | (uint64_t)info.nFileSizeLow;
+    if (size > host->extension_source_limit ||
+        size > (uint64_t)(SIZE_MAX - 1u)) {
+        result = RESOLVER_LIMIT;
+        goto done;
+    }
+    source = (char *)malloc((size_t)size + 1u);
+    if (source == NULL) {
+        result = RESOLVER_NO_MEMORY;
+        goto done;
+    }
+
+    while (total < (size_t)size) {
+        DWORD amount = 0u;
+        DWORD request = (DWORD)(((size_t)size - total) > 65536u
+            ? 65536u : ((size_t)size - total));
+        if (!ReadFile(handle, source + total, request, &amount, NULL) || amount == 0u) {
+            result = RESOLVER_IO;
+            goto done;
+        }
+        total += (size_t)amount;
+    }
+    {
+        char extra;
+        DWORD amount = 0u;
+        if (!ReadFile(handle, &extra, 1u, &amount, NULL)) {
+            result = RESOLVER_IO;
+            goto done;
+        }
+        if (amount != 0u) {
+            result = RESOLVER_IO;
+            goto done;
+        }
+    }
+    source[total] = '\0';
+    result = RESOLVER_OK;
+
+done:
+    if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle);
+    free(path);
+    if (result != RESOLVER_OK) {
+        free(source);
+        return result;
+    }
+    *out_source = source;
+    *out_length = total;
+    return RESOLVER_OK;
+}
+
 static resolver_result windows_read_module(cdin_lua_host *host,
                                            const char *owner,
                                            const char *module,
@@ -322,30 +416,72 @@ static resolver_result windows_read_module(cdin_lua_host *host,
 {
     wchar_t *current = NULL;
     wchar_t *next = NULL;
-    wchar_t *file_path = NULL;
+    char *single_file = NULL;
     size_t module_length = strlen(module);
     size_t start = 0u;
     size_t offset = 0u;
-    HANDLE handle = INVALID_HANDLE_VALUE;
-    BY_HANDLE_FILE_INFORMATION info;
-    DWORD file_size_high;
-    DWORD file_size_low;
-    uint64_t size;
     char *source = NULL;
-    size_t total = 0u;
+    size_t source_length = 0u;
+    resolver_result directory_result;
+    resolver_result single_file_result = RESOLVER_NOT_FOUND;
     resolver_result result = RESOLVER_IO;
+
+    if (host == NULL || host->extension_root_wide == NULL ||
+        out_source == NULL || out_length == NULL) return RESOLVER_IO;
+    *out_source = NULL;
+    *out_length = 0u;
+
     current = (wchar_t *)calloc(wcslen(host->extension_root_wide) + 1u, sizeof(wchar_t));
     if (current == NULL) return RESOLVER_NO_MEMORY;
     wcscpy(current, host->extension_root_wide);
-    result = windows_open_child_directory(host, current, owner, &next);
+
+    directory_result = windows_open_child_directory(host, current, owner, &next);
+    if (strcmp(module, "init") == 0) {
+        size_t owner_length = strlen(owner);
+        if (owner_length > SIZE_MAX - sizeof(".lua")) {
+            result = RESOLVER_LIMIT;
+            goto done;
+        }
+        single_file = (char *)malloc(owner_length + sizeof(".lua"));
+        if (single_file == NULL) {
+            result = RESOLVER_NO_MEMORY;
+            goto done;
+        }
+        memcpy(single_file, owner, owner_length);
+        memcpy(single_file + owner_length, ".lua", sizeof(".lua"));
+        single_file_result = windows_check_exact_name(current, single_file);
+        if (single_file_result != RESOLVER_OK &&
+            single_file_result != RESOLVER_NOT_FOUND) {
+            result = single_file_result;
+            goto done;
+        }
+        if (directory_result == RESOLVER_OK &&
+            single_file_result == RESOLVER_OK) {
+            /* Do not let two layouts silently compete for one extension name. */
+            result = RESOLVER_DENIED;
+            goto done;
+        }
+        if (directory_result == RESOLVER_NOT_FOUND &&
+            single_file_result == RESOLVER_OK) {
+            result = windows_read_regular_file(host, current, single_file,
+                                               &source, &source_length);
+            goto done;
+        }
+    }
+    if (directory_result != RESOLVER_OK) {
+        result = directory_result;
+        goto done;
+    }
     free(current);
     current = next;
     next = NULL;
-    if (result != RESOLVER_OK) goto done;
 
     while (offset < module_length) {
         size_t segment_length;
         char segment[257];
+        char *file_component;
+        size_t file_component_length;
+
         while (offset < module_length && module[offset] != '.') offset++;
         segment_length = offset - start;
         if (segment_length == 0u || segment_length >= sizeof(segment)) {
@@ -361,96 +497,33 @@ static resolver_result windows_read_module(cdin_lua_host *host,
             free(current);
             current = next;
             next = NULL;
-        } else {
-            size_t file_component_length = segment_length + sizeof(".lua");
-            char *file_component = (char *)malloc(file_component_length);
-            if (file_component == NULL) {
-                result = RESOLVER_NO_MEMORY;
-                goto done;
-            }
-            memcpy(file_component, segment, segment_length);
-            memcpy(file_component + segment_length, ".lua", sizeof(".lua"));
-            result = windows_check_exact_name(current, file_component);
-            if (result != RESOLVER_OK) {
-                free(file_component);
-                goto done;
-            }
-            file_path = append_wide_component(current, file_component);
-            free(file_component);
-            if (file_path == NULL) {
-                result = RESOLVER_NO_MEMORY;
-                goto done;
-            }
-            handle = CreateFileW(file_path, GENERIC_READ | FILE_READ_ATTRIBUTES,
-                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                 NULL, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, NULL);
-            if (handle == INVALID_HANDLE_VALUE) {
-                DWORD error = GetLastError();
-                result = (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND)
-                    ? RESOLVER_NOT_FOUND : RESOLVER_IO;
-                goto done;
-            }
-            if (!GetFileInformationByHandle(handle, &info)) {
-                result = RESOLVER_IO;
-                goto done;
-            }
-            if ((info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0u ||
-                info.nNumberOfLinks != 1u) {
-                result = RESOLVER_DENIED;
-                goto done;
-            }
-            result = verify_handle_path(host, handle);
-            if (result != RESOLVER_OK) goto done;
-            file_size_high = info.nFileSizeHigh;
-            file_size_low = info.nFileSizeLow;
-            size = ((uint64_t)file_size_high << 32u) | (uint64_t)file_size_low;
-            if (size > host->extension_source_limit ||
-                size > (uint64_t)(SIZE_MAX - 1u)) {
-                result = RESOLVER_LIMIT;
-                goto done;
-            }
-            source = (char *)malloc((size_t)size + 1u);
-            if (source == NULL) {
-                result = RESOLVER_NO_MEMORY;
-                goto done;
-            }
-            while (total < (size_t)size) {
-                DWORD amount = 0u;
-                DWORD request = (DWORD)(((size_t)size - total) > 65536u
-                    ? 65536u : ((size_t)size - total));
-                if (!ReadFile(handle, source + total, request, &amount, NULL) || amount == 0u) {
-                    result = RESOLVER_IO;
-                    goto done;
-                }
-                total += (size_t)amount;
-            }
-            {
-                char extra;
-                DWORD amount = 0u;
-                if (!ReadFile(handle, &extra, 1u, &amount, NULL)) {
-                    result = RESOLVER_IO;
-                    goto done;
-                }
-                if (amount != 0u) {
-                    result = RESOLVER_LIMIT;
-                    goto done;
-                }
-            }
-            source[total] = '\0';
-            result = RESOLVER_OK;
+            continue;
         }
+
+        file_component_length = segment_length + sizeof(".lua");
+        file_component = (char *)malloc(file_component_length);
+        if (file_component == NULL) {
+            result = RESOLVER_NO_MEMORY;
+            goto done;
+        }
+        memcpy(file_component, segment, segment_length);
+        memcpy(file_component + segment_length, ".lua", sizeof(".lua"));
+        result = windows_read_regular_file(host, current, file_component,
+                                           &source, &source_length);
+        free(file_component);
+        goto done;
     }
+
 done:
-    if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle);
     free(current);
     free(next);
-    free(file_path);
+    free(single_file);
     if (result != RESOLVER_OK) {
         free(source);
         return result;
     }
     *out_source = source;
-    *out_length = total;
+    *out_length = source_length;
     return RESOLVER_OK;
 }
 
@@ -514,6 +587,89 @@ static resolver_result posix_open_child_directory(int parent_fd,
     return RESOLVER_OK;
 }
 
+static resolver_result posix_read_regular_file(cdin_lua_host *host,
+                                               int directory_fd,
+                                               const char *file_component,
+                                               char **out_source,
+                                               size_t *out_length)
+{
+    int file_fd = -1;
+    struct stat info;
+    char *source = NULL;
+    size_t total = 0u;
+    size_t expected;
+    resolver_result result;
+
+    if (host == NULL || directory_fd < 0 || file_component == NULL ||
+        out_source == NULL || out_length == NULL) return RESOLVER_IO;
+    *out_source = NULL;
+    *out_length = 0u;
+
+    result = posix_check_exact_name(directory_fd, file_component);
+    if (result != RESOLVER_OK) return result;
+    file_fd = openat(directory_fd, file_component,
+                     O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (file_fd < 0) {
+        result = (errno == ENOENT) ? RESOLVER_NOT_FOUND :
+            ((errno == ELOOP || errno == EISDIR || errno == ENOTDIR)
+                ? RESOLVER_DENIED : RESOLVER_IO);
+        goto done;
+    }
+    if (fstat(file_fd, &info) != 0) {
+        result = RESOLVER_IO;
+        goto done;
+    }
+    if (!S_ISREG(info.st_mode) || info.st_nlink != 1) {
+        result = RESOLVER_DENIED;
+        goto done;
+    }
+    if (info.st_size < 0 || (uint64_t)info.st_size > host->extension_source_limit ||
+        (uint64_t)info.st_size > (uint64_t)(SIZE_MAX - 1u)) {
+        result = RESOLVER_LIMIT;
+        goto done;
+    }
+    expected = (size_t)info.st_size;
+    source = (char *)malloc(expected + 1u);
+    if (source == NULL) {
+        result = RESOLVER_NO_MEMORY;
+        goto done;
+    }
+
+    while (total <= expected) {
+        ssize_t amount = read(file_fd, source + total, expected + 1u - total);
+        if (amount > 0) {
+            total += (size_t)amount;
+            if (total > host->extension_source_limit) {
+                result = RESOLVER_LIMIT;
+                goto done;
+            }
+            if (total > expected) break;
+            continue;
+        }
+        if (amount == 0) break;
+        if (errno == EINTR) continue;
+        result = RESOLVER_IO;
+        goto done;
+    }
+    if (total != expected) {
+        /* Do not compile a truncated or extended file changed during the read. */
+        result = RESOLVER_IO;
+        goto done;
+    }
+    source[total] = '\0';
+    result = RESOLVER_OK;
+
+done:
+    if (file_fd >= 0) close(file_fd);
+    if (result != RESOLVER_OK) {
+        free(source);
+        return result;
+    }
+    *out_source = source;
+    *out_length = total;
+    return RESOLVER_OK;
+}
+
 static resolver_result posix_read_module(cdin_lua_host *host,
                                          const char *owner,
                                          const char *module,
@@ -521,15 +677,22 @@ static resolver_result posix_read_module(cdin_lua_host *host,
                                          size_t *out_length)
 {
     char *module_copy = NULL;
+    char *single_file = NULL;
     char *segment;
     char *save = NULL;
     int current_fd = -1;
     int next_fd = -1;
-    int file_fd = -1;
-    struct stat info;
     char *source = NULL;
-    size_t total = 0u;
+    size_t source_length = 0u;
+    resolver_result directory_result;
+    resolver_result single_file_result = RESOLVER_NOT_FOUND;
     resolver_result result;
+
+    if (host == NULL || host->extension_root_fd < 0 ||
+        out_source == NULL || out_length == NULL) return RESOLVER_IO;
+    *out_source = NULL;
+    *out_length = 0u;
+
     module_copy = strdup(module);
     if (module_copy == NULL) return RESOLVER_NO_MEMORY;
     current_fd = dup(host->extension_root_fd);
@@ -537,11 +700,47 @@ static resolver_result posix_read_module(cdin_lua_host *host,
         free(module_copy);
         return RESOLVER_IO;
     }
-    result = posix_open_child_directory(current_fd, owner, &next_fd);
+
+    directory_result = posix_open_child_directory(current_fd, owner, &next_fd);
+    if (strcmp(module, "init") == 0) {
+        size_t owner_length = strlen(owner);
+        if (owner_length > SIZE_MAX - sizeof(".lua")) {
+            result = RESOLVER_LIMIT;
+            goto done;
+        }
+        single_file = (char *)malloc(owner_length + sizeof(".lua"));
+        if (single_file == NULL) {
+            result = RESOLVER_NO_MEMORY;
+            goto done;
+        }
+        memcpy(single_file, owner, owner_length);
+        memcpy(single_file + owner_length, ".lua", sizeof(".lua"));
+        single_file_result = posix_check_exact_name(current_fd, single_file);
+        if (single_file_result != RESOLVER_OK &&
+            single_file_result != RESOLVER_NOT_FOUND) {
+            result = single_file_result;
+            goto done;
+        }
+        if (directory_result == RESOLVER_OK &&
+            single_file_result == RESOLVER_OK) {
+            result = RESOLVER_DENIED;
+            goto done;
+        }
+        if (directory_result == RESOLVER_NOT_FOUND &&
+            single_file_result == RESOLVER_OK) {
+            result = posix_read_regular_file(host, current_fd, single_file,
+                                             &source, &source_length);
+            goto done;
+        }
+    }
+    if (directory_result != RESOLVER_OK) {
+        result = directory_result;
+        goto done;
+    }
     close(current_fd);
     current_fd = next_fd;
     next_fd = -1;
-    if (result != RESOLVER_OK) goto done;
+
     segment = strtok_r(module_copy, ".", &save);
     while (segment != NULL) {
         char *following = strtok_r(NULL, ".", &save);
@@ -554,93 +753,40 @@ static resolver_result posix_read_module(cdin_lua_host *host,
         } else {
             size_t component_length = strlen(segment);
             char *filename;
-            if (component_length > SIZE_MAX - 5u) {
+            if (component_length > SIZE_MAX - sizeof(".lua")) {
                 result = RESOLVER_LIMIT;
                 goto done;
             }
-            filename = (char *)malloc(component_length + 5u);
+            filename = (char *)malloc(component_length + sizeof(".lua"));
             if (filename == NULL) {
                 result = RESOLVER_NO_MEMORY;
                 goto done;
             }
             memcpy(filename, segment, component_length);
-            memcpy(filename + component_length, ".lua", 5u);
-            result = posix_check_exact_name(current_fd, filename);
-            if (result != RESOLVER_OK) {
-                free(filename);
-                goto done;
-            }
-            file_fd = openat(current_fd, filename, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+            memcpy(filename + component_length, ".lua", sizeof(".lua"));
+            result = posix_read_regular_file(host, current_fd, filename,
+                                             &source, &source_length);
             free(filename);
-            if (file_fd < 0) {
-                result = (errno == ENOENT) ? RESOLVER_NOT_FOUND :
-                    ((errno == ELOOP || errno == EISDIR || errno == ENOTDIR)
-                        ? RESOLVER_DENIED : RESOLVER_IO);
-                goto done;
-            }
-            if (fstat(file_fd, &info) != 0) {
-                result = RESOLVER_IO;
-                goto done;
-            }
-            if (!S_ISREG(info.st_mode) || info.st_nlink != 1) {
-                result = RESOLVER_DENIED;
-                goto done;
-            }
-            if (info.st_size < 0 || (uint64_t)info.st_size > host->extension_source_limit ||
-                (uint64_t)info.st_size > (uint64_t)(SIZE_MAX - 1u)) {
-                result = RESOLVER_LIMIT;
-                goto done;
-            }
-            source = (char *)malloc((size_t)info.st_size + 1u);
-            if (source == NULL) {
-                result = RESOLVER_NO_MEMORY;
-                goto done;
-            }
-            while (total <= (size_t)info.st_size) {
-                ssize_t amount = read(file_fd, source + total,
-                                      (size_t)info.st_size + 1u - total);
-                if (amount > 0) {
-                    total += (size_t)amount;
-                    if (total > host->extension_source_limit) {
-                        result = RESOLVER_LIMIT;
-                        goto done;
-                    }
-                    if (total > (size_t)info.st_size) break;
-                    continue;
-                }
-                if (amount == 0) break;
-                if (errno == EINTR) continue;
-                result = RESOLVER_IO;
-                goto done;
-            }
-            if (total == 0u && info.st_size != 0) {
-                result = RESOLVER_IO;
-                goto done;
-            }
-            if (total != (size_t)info.st_size) {
-                /* File changed while it was being read; do not compile a
-                 * truncated or extended version of the module. */
-                result = RESOLVER_IO;
-                goto done;
-            }
-            source[total] = '\0';
-            result = RESOLVER_OK;
+            goto done;
         }
         segment = following;
     }
+    result = RESOLVER_NOT_FOUND;
+
 done:
-    if (file_fd >= 0) close(file_fd);
     if (current_fd >= 0) close(current_fd);
     if (next_fd >= 0) close(next_fd);
     free(module_copy);
+    free(single_file);
     if (result != RESOLVER_OK) {
         free(source);
         return result;
     }
     *out_source = source;
-    *out_length = total;
+    *out_length = source_length;
     return RESOLVER_OK;
 }
+
 
 #endif
 
