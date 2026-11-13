@@ -16,7 +16,7 @@ tag="${PIPELINE_RELEASE_TAG:-${GITHUB_REF_NAME:-}}"
   echo "PIPELINE_RELEASE_TAG is required (for example v1.2.2)." >&2
   exit 2
 }
-project_version="$(sed -n 's/^project(cdin_backend VERSION \\([^ ]*\\).*/\\1/p' CMakeLists.txt | head -n 1)"
+project_version="$(sed -n 's/^project(cdin_backend VERSION \([^ ]*\).*/\1/p' CMakeLists.txt | head -n 1)"
 version="${tag#v}"
 if [[ "${PIPELINE_DRY_RUN:-false}" == "true" && "${GITHUB_REF_TYPE:-}" != "tag" ]]; then
   # Branch dry-runs use a synthetic Pipeline tag; package names stay tied to
