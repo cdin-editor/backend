@@ -14,6 +14,9 @@ if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
 fi
 
 version="${PACKAGE_VERSION:-}"
+if [[ -z "$version" && -n "${PIPELINE_RELEASE_TAG:-}" ]]; then
+  version="${PIPELINE_RELEASE_TAG#v}"
+fi
 if [[ -z "$version" && -n "${GITHUB_REF_NAME:-}" ]]; then
   version="${GITHUB_REF_NAME#v}"
 fi
