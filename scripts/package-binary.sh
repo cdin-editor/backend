@@ -16,13 +16,18 @@ tag="${PIPELINE_RELEASE_TAG:-${GITHUB_REF_NAME:-}}"
   echo "PIPELINE_RELEASE_TAG is required (for example v1.2.2)." >&2
   exit 2
 }
+project_version="$(sed -n 's/^project(cdin_backend VERSION \\([^ ]*\\).*/\\1/p' CMakeLists.txt | head -n 1)"
 version="${tag#v}"
-project_version="$(sed -n 's/^project(cdin_backend VERSION \([^ ]*\).*/\1/p' CMakeLists.txt | head -n 1)"
-[[ "$version" == "$project_version" ]] || {
-  echo "release tag $tag does not match CMake package version $project_version" >&2
-  exit 1
-}
-
+if [[ "${PIPELINE_DRY_RUN:-false}" == "true" && "${GITHUB_REF_TYPE:-}" != "tag" ]]; then
+  # Branch dry-runs use a synthetic Pipeline tag; package names stay tied to
+  # the version declared by the Backend project itself.
+  version="$project_version"
+else
+  [[ "$version" == "$project_version" ]] || {
+    echo "release tag $tag does not match CMake package version $project_version" >&2
+    exit 1
+  }
+fi
 target_os="${BACKEND_TARGET_OS:-}"
 target_arch="${BACKEND_TARGET_ARCH:-}"
 target_abi="${BACKEND_TARGET_ABI:-}"
