@@ -279,7 +279,7 @@ static int runtime_handle_error_and_gc_conformance(cdin_backend *backend)
 
 #define REQUIRE_RUNTIME_TEST(condition, message) do { \
     if (!(condition)) { \
-        (void)fprintf(stderr, "Runtime Host conformance failed: %s\\n", message); \
+        (void)fprintf(stderr, "Runtime Host conformance failed: %s\n", message); \
         goto done; \
     } \
 } while (0)
@@ -523,7 +523,7 @@ int main(void)
         return 1;
     }
     if (!runtime_handle_error_and_gc_conformance(backend)) {
-        (void)fprintf(stderr, "Runtime Host error/GC conformance failed.\\n");
+        (void)fprintf(stderr, "Runtime Host error/GC conformance failed.\n");
         goto fail;
     }
     if (!create_runtime_split(backend, split_id, sizeof(split_id), &split_revision)) {
