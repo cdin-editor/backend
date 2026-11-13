@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -40,31 +41,43 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
-    tag = args.tag or __import__("os").environ.get("GITHUB_REF_NAME", "")
+    tag = args.tag or os.environ.get("GITHUB_REF_NAME", "")
     if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", tag):
-        parser.error("--tag must be an immutable vMAJOR.MINOR.PATCH tag")
-    version = tag[1:]
-    try:
-        tag_revision = subprocess.check_output(
-            ["git", "rev-parse", "--verify", f"{tag}^{{commit}}"],
-            text=True,
-            stderr=subprocess.PIPE,
-        ).strip()
-    except subprocess.CalledProcessError as error:
-        raise SystemExit(f"unable to resolve immutable release tag {tag!r}") from error
-    if not re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", tag_revision):
-        raise SystemExit("tag-resolved source revision must be a full Git object ID")
-    if args.source_revision and args.source_revision.lower() != tag_revision.lower():
-        raise SystemExit("provided source revision does not match the exact tag-resolved commit")
+        parser.error("--tag must be a v-prefixed SemVer version")
+    tag_version = tag[1:]
+    dry_run = (
+        os.environ.get("PIPELINE_DRY_RUN", "false").lower() == "true"
+        and os.environ.get("GITHUB_REF_TYPE") != "tag"
+    )
     head_revision = subprocess.check_output(
         ["git", "rev-parse", "--verify", "HEAD"], text=True
     ).strip()
-    if head_revision != tag_revision:
-        raise SystemExit(
-            f"refusing to publish metadata from HEAD {head_revision}; "
-            f"exact tag {tag} resolves to {tag_revision}"
-        )
+    if dry_run:
+        # Branch preflights use a synthetic candidate tag. Bind package
+        # provenance to the checked-out commit without requiring a Git tag.
+        tag_revision = head_revision
+        if args.source_revision and args.source_revision.lower() != head_revision.lower():
+            raise SystemExit("provided source revision does not match the checked-out dry-run commit")
+    else:
+        try:
+            tag_revision = subprocess.check_output(
+                ["git", "rev-parse", "--verify", f"{tag}^{{commit}}"],
+                text=True,
+                stderr=subprocess.PIPE,
+            ).strip()
+        except subprocess.CalledProcessError as error:
+            raise SystemExit(f"unable to resolve immutable release tag {tag!r}") from error
+        if not re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", tag_revision):
+            raise SystemExit("tag-resolved source revision must be a full Git object ID")
+        if args.source_revision and args.source_revision.lower() != tag_revision.lower():
+            raise SystemExit("provided source revision does not match the exact tag-resolved commit")
+        if head_revision.lower() != tag_revision.lower():
+            raise SystemExit(
+                f"refusing to publish metadata from HEAD {head_revision}; "
+                f"exact tag {tag} resolves to {tag_revision}"
+            )
     revision = tag_revision
+    version = None
 
     artifact_root = args.artifact_dir.expanduser().resolve()
     if not artifact_root.is_dir():
@@ -97,7 +110,7 @@ def main() -> int:
         selected_targets.add(key)
 
         expected_artifact_id = f"backend-{key[0]}-{key[1].replace('_', '-')}-{key[2]}"
-        expected_filename = f"cdin-backend-{version}-{key[0]}-{key[1].replace('_', '-')}-{key[2]}.tar.gz"
+        target_suffix = f"-{key[0]}-{key[1].replace('_', '-')}-{key[2]}.tar.gz"
         if artifact.get("artifact_id") != expected_artifact_id:
             raise SystemExit(f"{descriptor_path}: unexpected artifact ID")
         if artifact.get("kind") != "native-development-package":
@@ -114,8 +127,26 @@ def main() -> int:
             raise SystemExit(f"{descriptor_path}: incomplete build provenance")
 
         filename = artifact.get("file_name", "")
-        if filename != expected_filename or Path(filename).name != filename:
+        if (
+            not isinstance(filename, str)
+            or not filename.startswith("cdin-backend-")
+            or not filename.endswith(target_suffix)
+            or Path(filename).name != filename
+        ):
             raise SystemExit(f"{descriptor_path}: unexpected filename {filename!r}")
+        artifact_version = filename[len("cdin-backend-"):-len(target_suffix)]
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", artifact_version):
+            raise SystemExit(f"{descriptor_path}: invalid package version in filename {filename!r}")
+        if version is None:
+            version = artifact_version
+        elif version != artifact_version:
+            raise SystemExit(
+                f"{descriptor_path}: package version {artifact_version} differs from other targets ({version})"
+            )
+        if not dry_run and artifact_version != tag_version:
+            raise SystemExit(
+                f"{descriptor_path}: package version {artifact_version} does not match release tag {tag_version}"
+            )
         if descriptor_path.name != filename + ".artifact.json":
             raise SystemExit(f"{descriptor_path}: descriptor filename does not match the asset")
         if not re.fullmatch(r"[a-fA-F0-9]{64}", str(artifact.get("sha256", ""))):
@@ -150,6 +181,8 @@ def main() -> int:
     if selected_targets != EXPECTED_TARGETS:
         missing = sorted(EXPECTED_TARGETS - selected_targets)
         raise SystemExit(f"missing required native target artifacts: {missing}")
+    if version is None:
+        raise SystemExit("could not resolve a common package version from the target artifacts")
 
     metadata = {
         "schema_version": "1.2.0",
