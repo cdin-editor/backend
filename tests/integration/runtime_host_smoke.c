@@ -266,6 +266,224 @@ static int verify_success_batch(cdin_backend_frontend *frontend, uint64_t reques
         result_index < layout_index && layout_index < flush_index;
 }
 
+
+static int runtime_handle_error_and_gc_conformance(cdin_backend *backend)
+{
+    lua_State *L;
+    int base, docs_index, result_index, handle_index, error_index;
+    cdin_lua_handle *document_userdata;
+    cdin_host_handle document_handle, snapshot_handle, transaction_handle, subscription_handle;
+    cdin_host_doc_info info;
+    cdin_backend_status status;
+    int passed = 0;
+
+#define REQUIRE_RUNTIME_TEST(condition, message) do { \
+    if (!(condition)) { \
+        (void)fprintf(stderr, "Runtime Host conformance failed: %s\\n", message); \
+        goto done; \
+    } \
+} while (0)
+
+    if (backend == NULL || backend->runtime == NULL ||
+        backend->runtime->state == NULL || backend->runtime->host_ref == LUA_NOREF)
+        return 0;
+
+    L = backend->runtime->state;
+    base = lua_gettop(L);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, backend->runtime->host_ref);
+    REQUIRE_RUNTIME_TEST(lua_istable(L, -1), "Backend Host table is unavailable");
+    lua_getfield(L, -1, "documents");
+    REQUIRE_RUNTIME_TEST(lua_istable(L, -1), "Host documents service is unavailable");
+    lua_remove(L, -2);
+    docs_index = lua_absindex(L, -1);
+
+    /* Exercise the production adapter's structured status mapping. */
+    lua_getfield(L, docs_index, "create");
+    lua_pushvalue(L, docs_index);
+    lua_pushliteral(L, "abc");
+    REQUIRE_RUNTIME_TEST(lua_pcall(L, 2, 1, 0) == LUA_OK,
+                         "documents.create failed");
+    result_index = lua_absindex(L, -1);
+    lua_getfield(L, result_index, "handle");
+    handle_index = lua_absindex(L, -1);
+    document_userdata = (cdin_lua_handle *)luaL_testudata(
+        L, handle_index, CDIN_LUA_HANDLE_METATABLE);
+    REQUIRE_RUNTIME_TEST(document_userdata != NULL &&
+                         document_userdata->kind == CDIN_LUA_DOCUMENT &&
+                         document_userdata->active,
+                         "documents.create did not return an active document handle");
+    document_handle = document_userdata->value;
+    lua_remove(L, result_index);
+    handle_index = lua_absindex(L, -1);
+
+    lua_getfield(L, docs_index, "replace");
+    lua_pushvalue(L, docs_index);
+    lua_pushvalue(L, handle_index);
+    lua_createtable(L, 0, 4);
+    lua_pushinteger(L, 0); lua_setfield(L, -2, "expected_version");
+    lua_pushinteger(L, 0); lua_setfield(L, -2, "start");
+    lua_pushinteger(L, 0); lua_setfield(L, -2, "finish");
+    lua_pushliteral(L, "x"); lua_setfield(L, -2, "bytes");
+    REQUIRE_RUNTIME_TEST(lua_pcall(L, 3, 1, 0) == LUA_OK,
+                         "documents.replace failed");
+    lua_pop(L, 1);
+
+    lua_getfield(L, docs_index, "read");
+    lua_pushvalue(L, docs_index);
+    lua_pushvalue(L, handle_index);
+    lua_createtable(L, 0, 3);
+    lua_pushinteger(L, 0); lua_setfield(L, -2, "start");
+    lua_pushinteger(L, 1); lua_setfield(L, -2, "length");
+    lua_pushinteger(L, 0); lua_setfield(L, -2, "expected_version");
+    REQUIRE_RUNTIME_TEST(lua_pcall(L, 3, 1, 0) != LUA_OK,
+                         "stale documents.read unexpectedly succeeded");
+    error_index = lua_absindex(L, -1);
+    REQUIRE_RUNTIME_TEST(lua_istable(L, error_index),
+                         "stale read did not return a structured error table");
+    lua_getfield(L, error_index, "domain");
+    REQUIRE_RUNTIME_TEST(lua_isstring(L, -1) &&
+                         strcmp(lua_tostring(L, -1), "cdin.runtime") == 0,
+                         "stale read error domain is incorrect");
+    lua_pop(L, 1);
+    lua_getfield(L, error_index, "code");
+    REQUIRE_RUNTIME_TEST(lua_isstring(L, -1) &&
+                         strcmp(lua_tostring(L, -1), "STALE_VERSION") == 0,
+                         "stale Kernel status was not preserved as STALE_VERSION");
+    lua_pop(L, 1);
+    lua_getfield(L, error_index, "details");
+    REQUIRE_RUNTIME_TEST(lua_istable(L, -1),
+                         "stale read error details are missing");
+    lua_getfield(L, -1, "expected");
+    REQUIRE_RUNTIME_TEST(lua_isinteger(L, -1) && lua_tointeger(L, -1) == 0,
+                         "stale read expected-version detail is incorrect");
+    lua_pop(L, 1);
+    lua_getfield(L, -1, "current");
+    REQUIRE_RUNTIME_TEST(lua_isinteger(L, -1) && lua_tointeger(L, -1) == 1,
+                         "stale read current-version detail is incorrect");
+    lua_pop(L, 2); /* details and structured error */
+
+    /*
+     * Drop each Backend-owned Lua userdata without an explicit close. A forced
+     * full collection must release the corresponding Kernel handle exactly
+     * once; querying/releasing the copied opaque identity must then report the
+     * adapter's invalid-handle result.
+     */
+    lua_getfield(L, docs_index, "acquire_snapshot");
+    lua_pushvalue(L, docs_index);
+    lua_pushvalue(L, handle_index);
+    REQUIRE_RUNTIME_TEST(lua_pcall(L, 2, 1, 0) == LUA_OK,
+                         "documents.acquire_snapshot failed");
+    result_index = lua_absindex(L, -1);
+    lua_getfield(L, result_index, "handle");
+    {
+        cdin_lua_handle *value = (cdin_lua_handle *)luaL_testudata(
+            L, -1, CDIN_LUA_HANDLE_METATABLE);
+        REQUIRE_RUNTIME_TEST(value != NULL && value->kind == CDIN_LUA_SNAPSHOT &&
+                             value->active,
+                             "snapshot did not return an active Backend handle");
+        snapshot_handle = value->value;
+    }
+    lua_remove(L, result_index);
+    lua_pop(L, 1);
+    (void)lua_gc(L, LUA_GCCOLLECT, 0);
+    status = cdin_kernel_host_snapshot_release(backend->kernel, snapshot_handle);
+    REQUIRE_RUNTIME_TEST(status == CDIN_BACKEND_NOT_FOUND,
+                         "snapshot userdata finalizer did not release its Kernel handle");
+
+    lua_getfield(L, docs_index, "begin_transaction");
+    lua_pushvalue(L, docs_index);
+    lua_pushvalue(L, handle_index);
+    lua_createtable(L, 0, 1);
+    lua_pushinteger(L, 1); lua_setfield(L, -2, "expected_version");
+    REQUIRE_RUNTIME_TEST(lua_pcall(L, 3, 1, 0) == LUA_OK,
+                         "documents.begin_transaction failed");
+    result_index = lua_absindex(L, -1);
+    lua_getfield(L, result_index, "handle");
+    {
+        cdin_lua_handle *value = (cdin_lua_handle *)luaL_testudata(
+            L, -1, CDIN_LUA_HANDLE_METATABLE);
+        REQUIRE_RUNTIME_TEST(value != NULL && value->kind == CDIN_LUA_TRANSACTION &&
+                             value->active,
+                             "transaction did not return an active Backend handle");
+        transaction_handle = value->value;
+    }
+    lua_remove(L, result_index);
+    lua_pop(L, 1);
+    (void)lua_gc(L, LUA_GCCOLLECT, 0);
+    status = cdin_kernel_host_transaction_abort(backend->kernel, transaction_handle);
+    REQUIRE_RUNTIME_TEST(status == CDIN_BACKEND_NOT_FOUND,
+                         "transaction userdata finalizer did not abort its Kernel handle");
+
+    lua_getfield(L, docs_index, "subscribe");
+    lua_pushvalue(L, docs_index);
+    lua_pushvalue(L, handle_index);
+    REQUIRE_RUNTIME_TEST(lua_pcall(L, 2, 1, 0) == LUA_OK,
+                         "documents.subscribe failed");
+    result_index = lua_absindex(L, -1);
+    lua_getfield(L, result_index, "handle");
+    {
+        cdin_lua_handle *value = (cdin_lua_handle *)luaL_testudata(
+            L, -1, CDIN_LUA_HANDLE_METATABLE);
+        REQUIRE_RUNTIME_TEST(value != NULL && value->kind == CDIN_LUA_SUBSCRIPTION &&
+                             value->active,
+                             "subscribe did not return an active Backend handle");
+        subscription_handle = value->value;
+    }
+    lua_remove(L, result_index);
+    lua_pop(L, 1);
+    (void)lua_gc(L, LUA_GCCOLLECT, 0);
+    status = cdin_kernel_host_unsubscribe(backend->kernel, subscription_handle);
+    REQUIRE_RUNTIME_TEST(status == CDIN_BACKEND_NOT_FOUND,
+                         "subscription userdata finalizer did not unsubscribe its Kernel handle");
+
+    /* Explicit close disables the finalizer before the Lua object is collected. */
+    lua_getfield(L, docs_index, "close");
+    lua_pushvalue(L, docs_index);
+    lua_pushvalue(L, handle_index);
+    REQUIRE_RUNTIME_TEST(lua_pcall(L, 2, 1, 0) == LUA_OK && lua_toboolean(L, -1),
+                         "documents.close failed");
+    lua_pop(L, 1);
+    REQUIRE_RUNTIME_TEST(document_userdata->active == 0,
+                         "explicit document close left its userdata finalizer active");
+    lua_pop(L, 1); /* Document userdata. */
+    (void)lua_gc(L, LUA_GCCOLLECT, 0);
+    status = cdin_kernel_host_document_info(backend->kernel, document_handle, &info);
+    REQUIRE_RUNTIME_TEST(status == CDIN_BACKEND_NOT_FOUND,
+                         "explicit close did not invalidate the Kernel document handle");
+
+    /* The fallback finalizer must also close an unclosed document handle. */
+    lua_getfield(L, docs_index, "create");
+    lua_pushvalue(L, docs_index);
+    lua_pushliteral(L, "gc-document");
+    REQUIRE_RUNTIME_TEST(lua_pcall(L, 2, 1, 0) == LUA_OK,
+                         "second documents.create failed");
+    result_index = lua_absindex(L, -1);
+    lua_getfield(L, result_index, "handle");
+    {
+        cdin_lua_handle *value = (cdin_lua_handle *)luaL_testudata(
+            L, -1, CDIN_LUA_HANDLE_METATABLE);
+        REQUIRE_RUNTIME_TEST(value != NULL && value->kind == CDIN_LUA_DOCUMENT &&
+                             value->active,
+                             "second document did not return an active handle");
+        document_handle = value->value;
+    }
+    lua_remove(L, result_index);
+    lua_pop(L, 1);
+    (void)lua_gc(L, LUA_GCCOLLECT, 0);
+    status = cdin_kernel_host_document_info(backend->kernel, document_handle, &info);
+    REQUIRE_RUNTIME_TEST(status == CDIN_BACKEND_NOT_FOUND,
+                         "document userdata finalizer did not close its Kernel handle");
+
+    passed = 1;
+    (void)puts("PASS runtime_host_conformance: typed stale-version errors and document/snapshot/transaction/subscription finalizers");
+
+done:
+    lua_settop(L, base);
+    (void)lua_gc(L, LUA_GCCOLLECT, 0);
+#undef REQUIRE_RUNTIME_TEST
+    return passed;
+}
+
 int main(void)
 {
     const char *runtime_root = getenv("CDIN_RUNTIME_ROOT");
@@ -303,6 +521,10 @@ int main(void)
         (void)fprintf(stderr, "Backend/Runtime startup failed: %s\n", cdin_backend_status_name(status));
         cdin_backend_destroy(backend);
         return 1;
+    }
+    if (!runtime_handle_error_and_gc_conformance(backend)) {
+        (void)fprintf(stderr, "Runtime Host error/GC conformance failed.\\n");
+        goto fail;
     }
     if (!create_runtime_split(backend, split_id, sizeof(split_id), &split_revision)) {
         (void)fprintf(stderr, "Could not create the live Runtime split fixture.\n");
