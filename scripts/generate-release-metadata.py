@@ -183,6 +183,7 @@ def main() -> int:
         raise SystemExit(f"missing required native target artifacts: {missing}")
     if version is None:
         raise SystemExit("could not resolve a common package version from the target artifacts")
+    metadata_filename = f"backend-{tag_version if dry_run else version}.json"
 
     metadata = {
         "schema_version": "1.2.0",
@@ -200,7 +201,7 @@ def main() -> int:
             "repository_uri": source_uri,
             "tag": tag,
             "tag_commit": revision,
-            "metadata_asset_name": f"backend-{version}.json",
+            "metadata_asset_name": metadata_filename,
         },
         "artifacts": sorted(
             artifacts,
@@ -244,7 +245,7 @@ def main() -> int:
     except ValueError as error:
         raise SystemExit("metadata output must be written beneath the downloaded artifact directory") from error
     if (
-        output.name != f"backend-{version}.json"
+        output.name != metadata_filename
         or len(output_relative.parts) != 2
         or not output_relative.parts[0].startswith("release-build-")
     ):
